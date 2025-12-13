@@ -1,0 +1,1634 @@
+
+
+ 
+
+ 
+
+From: Тхор Александр Владиславович <Tkhor.A.Vl@omega.sbrf.ru>
+Sent: Saturday, December 13, 2025 7:55 PM
+To: 'Тхор Александр Владиславович {SIGMA}' <Tkhor.A.Vl@sberbank.ru>
+Subject: RE: Пропустили Java-митап 11 декабря? Ловите запись Копия
+
+ 
+
+ 
+
+ 
+
+From: Тхор Александр Владиславович <Tkhor.A.Vl@omega.sbrf.ru>
+Sent: Saturday, December 13, 2025 7:54 PM
+To: 'Тхор Александр Владиславович {SIGMA}' <Tkhor.A.Vl@sberbank.ru>
+Subject: RE: Пропустили Java-митап 11 декабря? Ловите запись Копия
+
+ 
+
+== Physical Plan ==
+
+InMemoryTableScan [report_date#7, agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, balance_amt#2305, balance_rub#2331, deferral_amt#3958, deferral_rub#3959, return_amt#3960, return_rub#3961, cover_amt#3962, cover_rub#3963, pay_amt#3964, pay_rub#3965, defer_fee_amt#3966, interest_amt#3967, is_migration#3968]
+
+   +- InMemoryRelation [report_date#7, agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, balance_amt#2305, balance_rub#2331, deferral_amt#3958, deferral_rub#3959, return_amt#3960, return_rub#3961, cover_amt#3962, cover_rub#3963, pay_amt#3964, pay_rub#3965, defer_fee_amt#3966, interest_amt#3967, is_migration#3968], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+         +- *(1) Project [report_date#7, agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, balance_amt#2305, balance_rub#2331, coalesce(deferral_amt#1627, 0E-10) AS deferral_amt#3958, CASE WHEN (op_digital_code#3096 = 643) THEN coalesce(deferral_amt#1627, 0E-10) ELSE cast(CheckOverflow((promote_precision(CheckOverflow((promote_precision(coalesce(deferral_amt#1627, 0E-10)) * promote_precision(cast(coalesce(op_rub_rate_amt#3207, 1.0000) as decimal(38,10)))), DecimalType(38,6), true)) / promote_precision(cast(cast(coalesce(op_qty_rub_cnt#3235L, 1) as decimal(20,0)) as decimal(38,6)))), DecimalType(38,6), true) as decimal(38,10)) END AS deferral_rub#3959, coalesce(return_amt#1629, 0E-10) AS return_amt#3960, CASE WHEN (op_digital_code#3096 = 643) THEN coalesce(return_amt#1629, 0E-10) ELSE cast(CheckOverflow((promote_precision(CheckOverflow((promote_precision(coalesce(return_amt#1629, 0E-10)) * promote_precision(cast(coalesce(op_rub_rate_amt#3207, 1.0000) as decimal(38,10)))), DecimalType(38,6), true)) / promote_precision(cast(cast(coalesce(op_qty_rub_cnt#3235L, 1) as decimal(20,0)) as decimal(38,6)))), DecimalType(38,6), true) as decimal(38,10)) END AS return_rub#3961, coalesce(cover_amt#1631, 0E-10) AS cover_amt#3962, CASE WHEN (op_digital_code#3096 = 643) THEN coalesce(cover_amt#1631, 0E-10) ELSE cast(CheckOverflow((promote_precision(CheckOverflow((promote_precision(coalesce(cover_amt#1631, 0E-10)) * promote_precision(cast(coalesce(op_rub_rate_amt#3207, 1.0000) as decimal(38,10)))), DecimalType(38,6), true)) / promote_precision(cast(cast(coalesce(op_qty_rub_cnt#3235L, 1) as decimal(20,0)) as decimal(38,6)))), DecimalType(38,6), true) as decimal(38,10)) END AS cover_rub#3963, coalesce(pay_amt#1633, 0E-10) AS pay_amt#3964, CASE WHEN (op_digital_code#3096 = 643) THEN coalesce(pay_amt#1633, 0E-10) ELSE cast(CheckOverflow((promote_precision(CheckOverflow((promote_precision(coalesce(pay_amt#1633, 0E-10)) * promote_precision(cast(coalesce(op_rub_rate_amt#3207, 1.0000) as decimal(38,10)))), DecimalType(38,6), true)) / promote_precision(cast(cast(coalesce(op_qty_rub_cnt#3235L, 1) as decimal(20,0)) as decimal(38,6)))), DecimalType(38,6), true) as decimal(38,10)) END AS pay_rub#3965, coalesce(defer_fee_amt#1635, 0E-10) AS defer_fee_amt#3966, coalesce(interest_amt#1637, 0E-10) AS interest_amt#3967, ((is_migration_flag#1639 = 1) <=> true) AS is_migration#3968]
+
+            +- InMemoryTableScan [agr_num#230, agr_sid#229, agr_sk#118L, balance_amt#2305, balance_rub#2331, buyer_inn#963, close_dt#119, cover_amt#1631, coverage_flag#231, coverage_type_sk#232L, defer_fee_amt#1635, deferral_amt#1627, docum_tran_amt#251, docum_tran_crncy_sk#253L, interest_amt#1637, is_migration_flag#1639, op_digital_code#3096, op_qty_rub_cnt#3235L, op_rub_rate_amt#3207, open_dt#169, pay_amt#1633, report_date#7, return_amt#1629, seller_inn#1049]
+
+                  +- InMemoryRelation [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639, balance_amt#2305, balance_rub#2331, op_crncy_sk#1920L, op_digital_code#3096, op_rub_rate_amt#3207, op_qty_rub_cnt#3235L], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                        +- *(7) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639, balance_amt#2305, balance_rub#2331, op_crncy_sk#1920L, op_digital_code#3096, rub_rate_amt#3149 AS op_rub_rate_amt#3207, qty_rub_cnt#3148L AS op_qty_rub_cnt#3235L]
+
+                           +- *(7) SortMergeJoin [op_crncy_sk#1920L], [rate_crncy_sk_op#2151L], LeftOuter
+
+                              :- *(5) Sort [op_crncy_sk#1920L ASC NULLS FIRST], false, 0
+
+                              :  +- Exchange hashpartitioning(op_crncy_sk#1920L, 50), ENSURE_REQUIREMENTS, [id=#999]
+
+                              :     +- *(4) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639, balance_amt#2305, balance_rub#2331, op_crncy_sk#1920L, digital_code#65 AS op_digital_code#3096]
+
+                              :        +- *(4) BroadcastHashJoin [op_crncy_sk#1920L], [op_map_crncy_sk#82L], LeftOuter, BuildRight, false
+
+                              :           :- *(4) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639, balance_amt#2305, balance_rub#2331, op_crncy_sk#1920L]
+
+                              :           :  +- *(4) SortMergeJoin [agr_sk#118L], [agr_sk#2994L], LeftOuter
+
+                              :           :     :- *(1) Sort [agr_sk#118L ASC NULLS FIRST], false, 0
+
+                              :           :     :  +- Exchange hashpartitioning(agr_sk#118L, 50), ENSURE_REQUIREMENTS, [id=#953]
+
+                              :           :     :     +- InMemoryTableScan [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639, balance_amt#2305, balance_rub#2331]
+
+                              :           :     :           +- InMemoryRelation [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639, balance_amt#2305, balance_rub#2331], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                 +- *(8) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639, docum_tran_amt#251 AS balance_amt#2305, CASE WHEN (deal_digital_code#2233 = 643) THEN docum_tran_amt#251 ELSE cast(CheckOverflow((promote_precision(CheckOverflow((promote_precision(docum_tran_amt#251) * promote_precision(cast(coalesce(rub_rate_amt#2032, 1.0000) as decimal(38,10)))), DecimalType(38,6), true)) / promote_precision(cast(cast(coalesce(qty_rub_cnt#2031L, 1) as decimal(20,0)) as decimal(38,6)))), DecimalType(38,6), true) as decimal(38,10)) END AS balance_rub#2331]
+
+                              :           :     :                    +- *(8) SortMergeJoin [map_crncy_sk#45L], [rate_crncy_sk_deal#2069L], LeftOuter
+
+                              :           :     :                       :- *(6) Sort [map_crncy_sk#45L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :  +- Exchange hashpartitioning(map_crncy_sk#45L, 50), ENSURE_REQUIREMENTS, [id=#855]
+
+                              :           :     :                       :     +- *(5) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639, map_crncy_sk#45L, digital_code#28 AS deal_digital_code#2233]
+
+                              :           :     :                       :        +- *(5) BroadcastHashJoin [docum_tran_crncy_sk#253L], [map_crncy_sk#45L], LeftOuter, BuildRight, false
+
+                              :           :     :                       :           :- *(5) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049, report_date#7, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639]
+
+                              :           :     :                       :           :  +- *(5) SortMergeJoin [agr_sk#118L], [agr_sk#1449L], LeftOuter
+
+                              :           :     :                       :           :     :- *(2) Sort [agr_sk#118L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :     :  +- Exchange hashpartitioning(agr_sk#118L, 50), ENSURE_REQUIREMENTS, [id=#835]
+
+                              :           :     :                       :           :     :     +- *(1) BroadcastNestedLoopJoin BuildRight, Cross
+
+                              :           :     :                       :           :     :        :- InMemoryTableScan [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049]
+
+                              :           :     :                       :           :     :        :     +- InMemoryRelation [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, seller_inn#1049], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :     :        :           +- *(8) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, buyer_inn#963, coalesce(clients_inn_num#924, ) AS seller_inn#1049]
+
+                              :           :     :                       :           :     :        :              +- *(8) SortMergeJoin [docum_tran_seller_subj_sk#297L], [clients_subj_sk#921L], LeftOuter
+
+                              :           :     :                       :           :     :        :                 :- *(5) Sort [docum_tran_seller_subj_sk#297L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :     :        :                 :  +- Exchange hashpartitioning(docum_tran_seller_subj_sk#297L, 50), ENSURE_REQUIREMENTS, [id=#356]
+
+                              :           :     :                       :           :     :        :                 :     +- *(4) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, docum_tran_seller_subj_sk#297L, coalesce(clients_inn_num#924, ) AS buyer_inn#963]
+
+                              :           :     :                       :           :     :        :                 :        +- *(4) SortMergeJoin [letter_cred_org_buyer_subj_sk#302L], [clients_subj_sk#921L], LeftOuter
+
+                              :           :     :                       :           :     :        :                 :           :- *(1) Sort [letter_cred_org_buyer_subj_sk#302L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :     :        :                 :           :  +- Exchange hashpartitioning(letter_cred_org_buyer_subj_sk#302L, 50), ENSURE_REQUIREMENTS, [id=#327]
+
+                              :           :     :                       :           :     :        :                 :           :     +- InMemoryTableScan [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L]
+
+                              :           :     :                       :           :     :        :                 :           :           +- InMemoryRelation [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :     :        :                 :           :                 +- *(2) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L]
+
+                              :           :     :                       :           :     :        :                 :           :                    +- *(2) Filter ((isnull(close_dt#119) OR (close_dt#119 > period_start#8)) OR (has_valid_plan#566 = 1))
+
+                              :           :     :                       :           :     :        :                 :           :                       +- *(2) HashAggregate(keys=[agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L, period_start#8], functions=[max(CASE WHEN (((isnotnull(plan_payment_agr_sk#380L) AND split(pm_sid#396, \|, -1)[0] IN (VOZMPA4410,VOZMPA)) AND (coalesce(letter_cred_org_plan_payment_amt#371, 0E-10) > 0E-10)) AND (letter_cred_org_plan_payment_dt#377 >= period_start#8)) THEN 1 ELSE 0 END)])
+
+                              :           :     :                       :           :     :        :                 :           :                          +- *(2) HashAggregate(keys=[agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L, period_start#8], functions=[partial_max(CASE WHEN (((isnotnull(plan_payment_agr_sk#380L) AND split(pm_sid#396, \|, -1)[0] IN (VOZMPA4410,VOZMPA)) AND (coalesce(letter_cred_org_plan_payment_amt#371, 0E-10) > 0E-10)) AND (letter_cred_org_plan_payment_dt#377 >= period_start#8)) THEN 1 ELSE 0 END)])
+
+                              :           :     :                       :           :     :        :                 :           :                             +- *(2) BroadcastNestedLoopJoin BuildRight, Cross
+
+                              :           :     :                       :           :     :        :                 :           :                                :- *(2) BroadcastHashJoin [agr_sk#118L], [plan_payment_agr_sk#380L], LeftOuter, BuildRight, false
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :- InMemoryTableScan [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :     +- InMemoryRelation [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :           +- *(9) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :              +- *(9) BroadcastHashJoin [letter_cred_type_sk#167L], [letter_cred_type_sk#355L], Inner, BuildRight, (lct_sid#365 IN (1,2,10) OR StartsWith(agr_num#230, ind)), false
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :- *(9) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, letter_cred_type_sk#167L, docum_tran_amt#251, docum_tran_crncy_sk#253L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :  +- *(9) SortMergeJoin [agr_sk#118L], [agr_sk#289L], Inner
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :- *(5) Project [agr_sk#118L, agr_sid#229, agr_num#230, open_dt#169, close_dt#119, coverage_flag#231, coverage_type_sk#232L, letter_cred_type_sk#167L, docum_tran_amt#251, docum_tran_crncy_sk#253L]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :  +- *(5) SortMergeJoin [agr_sk#118L], [agr_sk#242L], Inner
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :     :- *(2) Sort [agr_sk#118L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :     :  +- Exchange hashpartitioning(agr_sk#118L, 50), ENSURE_REQUIREMENTS, [id=#88]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :     :     +- *(1) Project [agr_sk#118L, sid#170 AS agr_sid#229, num#168 AS agr_num#230, open_dt#169, close_dt#119, letter_cred_coverage_flag#161 AS coverage_flag#231, letter_cred_source_coverage_type_sk#165L AS coverage_type_sk#232L, letter_cred_type_sk#167L]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :     :        +- *(1) Filter (isnotnull(agr_sk#118L) AND isnotnull(letter_cred_type_sk#167L))
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :     :           +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr [agr_sk#118L, close_dt#119, letter_cred_coverage_flag#161, letter_cred_source_coverage_type_sk#165L, letter_cred_type_sk#167L, num#168, open_dt#169, sid#170], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`agr`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [agr_dp_code#117, agr_sk#118L, close_dt#119, crpcr_cgc_prod_dp_code#120, crpcr_cgc_prod_sk#121L, ..., Partition Cols: []]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :     +- *(4) Sort [agr_sk#242L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :        +- Exchange hashpartitioning(agr_sk#242L, 50), ENSURE_REQUIREMENTS, [id=#97]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :           +- *(3) Project [agr_sk#242L, docum_tran_amt#251, docum_tran_crncy_sk#253L]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :              +- *(3) Filter ((isnotnull(end_dt#254) AND (end_dt#254 = 9999-12-31)) AND isnotnull(agr_sk#242L))
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     :                 +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_fin [agr_sk#242L, docum_tran_amt#251, docum_tran_crncy_sk#253L, end_dt#254], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`agr_fin`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [agr_dp_code#241, agr_sk#242L, crpcr_line_crncy_dp_code#243, crpcr_line_crncy_sk#244L, crpcr_line..., Partition Cols: [p1month#261]]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :     +- *(7) Sort [agr_sk#289L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :        +- Exchange hashpartitioning(agr_sk#289L, 50), ENSURE_REQUIREMENTS, [id=#109]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :           +- *(6) Filter isnotnull(agr_sk#289L)
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 :              +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_proc [agr_sk#289L, letter_cred_org_buyer_subj_sk#302L, docum_tran_seller_subj_sk#297L], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`agr_proc`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [advising_subj_dp_code#286, advising_subj_sk#287L, agr_dp_code#288, agr_sk#289L, confirming_subj_..., Partition Cols: [p1month#315]]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                 +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, true]),false), [id=#120]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                    +- *(8) Project [letter_cred_type_sk#355L, sid#356 AS lct_sid#365]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                       +- *(8) Filter isnotnull(letter_cred_type_sk#355L)
+
+                              :           :     :                       :           :     :        :                 :           :                                :  :                          +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.letter_cred_type [letter_cred_type_sk#355L, sid#356], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`letter_cred_type`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [ctl_loading#349L, ctl_validfrom#350, deleted_flag#351, letter_cred_type_code#352, letter_cred_ty..., Partition Cols: []]
+
+                              :           :     :                       :           :     :        :                 :           :                                :  +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, true]),false), [id=#210]
+
+                              :           :     :                       :           :     :        :                 :           :                                :     +- *(1) Project [plan_payment_agr_sk#380L, sid#381 AS pm_sid#396, letter_cred_org_plan_payment_dt#377, letter_cred_org_plan_payment_amt#371]
+
+                              :           :     :                       :           :     :        :                 :           :                                :        +- *(1) Filter isnotnull(plan_payment_agr_sk#380L)
+
+                              :           :     :                       :           :     :        :                 :           :                                :           +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.letter_cred_org_plan_payment [letter_cred_org_plan_payment_amt#371, letter_cred_org_plan_payment_dt#377, plan_payment_agr_sk#380L, sid#381], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`letter_cred_org_plan_payment`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [ctl_loading#368L, ctl_validfrom#369, deleted_flag#370, letter_cred_org_plan_payment_amt#371, let..., Partition Cols: []]
+
+                              :           :     :                       :           :     :        :                 :           :                                +- BroadcastExchange IdentityBroadcastMode, [id=#199]
+
+                              :           :     :                       :           :     :        :                 :           :                                   +- InMemoryTableScan [period_start#8]
+
+                              :           :     :                       :           :     :        :                 :           :                                         +- InMemoryRelation [report_date#7, period_start#8], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :     :        :                 :           :                                               +- LocalTableScan [report_date#7, period_start#8]
+
+                              :           :     :                       :           :     :        :                 :           +- *(3) Sort [clients_subj_sk#921L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :     :        :                 :              +- Exchange hashpartitioning(clients_subj_sk#921L, 50), ENSURE_REQUIREMENTS, [id=#348]
+
+                              :           :     :                       :           :     :        :                 :                 +- *(2) Filter isnotnull(clients_subj_sk#921L)
+
+                              :           :     :                       :           :     :        :                 :                    +- InMemoryTableScan [clients_subj_sk#921L, clients_inn_num#924], [isnotnull(clients_subj_sk#921L)]
+
+                              :           :     :                       :           :     :        :                 :                          +- InMemoryRelation [clients_subj_sk#921L, clients_inn_num#924], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :     :        :                 :                                +- *(4) HashAggregate(keys=[subj_sk#859L, inn_num#856], functions=[])
+
+                              :           :     :                       :           :     :        :                 :                                   +- Exchange hashpartitioning(subj_sk#859L, inn_num#856, 50), ENSURE_REQUIREMENTS, [id=#270]
+
+                              :           :     :                       :           :     :        :                 :                                      +- *(3) HashAggregate(keys=[subj_sk#859L, inn_num#856], functions=[])
+
+                              :           :     :                       :           :     :        :                 :                                         +- Union
+
+                              :           :     :                       :           :     :        :                 :                                            :- *(1) Project [subj_sk#859L, inn_num#856]
+
+                              :           :     :                       :           :     :        :                 :                                            :  +- *(1) Filter (isnotnull(end_dt#855) AND (end_dt#855 = 9999-12-31))
+
+                              :           :     :                       :           :     :        :                 :                                            :     +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.subj_h [end_dt#855, inn_num#856, subj_sk#859L], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`subj_h`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [ctl_loading#853L, ctl_validfrom#854, end_dt#855, inn_num#856, start_dt#857, subj_dp_code#858, su..., Partition Cols: [p1month#862]]
+
+                              :           :     :                       :           :     :        :                 :                                            +- *(2) Project [subj_sk#892L, inn_num#880]
+
+                              :           :     :                       :           :     :        :                 :                                               +- *(2) Filter (isnotnull(end_dt#879) AND (end_dt#879 = 9999-12-31))
+
+                              :           :     :                       :           :     :        :                 :                                                  +- Scan hive prx_usl_subj_org_idl_snp_subj_h_usl_subj_org_idl_snp.subj_h [end_dt#879, inn_num#880, subj_sk#892L], HiveTableRelation [`prx_usl_subj_org_idl_snp_subj_h_usl_subj_org_idl_snp`.`subj_h`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [ctl_loading#875L, ctl_validfrom#876, curr_rsd_flag#877, declared_capital_amt#878, end_dt#879, in..., Partition Cols: [p100year#895]]
+
+                              :           :     :                       :           :     :        :                 +- *(7) Sort [clients_subj_sk#921L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :     :        :                    +- ReusedExchange [clients_subj_sk#921L, clients_inn_num#924], Exchange hashpartitioning(clients_subj_sk#921L, 50), ENSURE_REQUIREMENTS, [id=#348]
+
+                              :           :     :                       :           :     :        +- BroadcastExchange IdentityBroadcastMode, [id=#812]
+
+                              :           :     :                       :           :     :           +- InMemoryTableScan [report_date#7]
+
+                              :           :     :                       :           :     :                 +- InMemoryRelation [report_date#7, period_start#8], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :     :                       +- LocalTableScan [report_date#7, period_start#8]
+
+                              :           :     :                       :           :     +- *(3) Sort [agr_sk#1449L ASC NULLS FIRST], false, 0
+
+                              :           :     :                       :           :        +- *(3) Filter isnotnull(agr_sk#1449L)
+
+                              :           :     :                       :           :           +- InMemoryTableScan [agr_sk#1449L, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639], [isnotnull(agr_sk#1449L)]
+
+                              :           :     :                       :           :                 +- InMemoryRelation [agr_sk#1449L, deferral_amt#1627, return_amt#1629, cover_amt#1631, pay_amt#1633, defer_fee_amt#1635, interest_amt#1637, is_migration_flag#1639], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :                       +- *(2) HashAggregate(keys=[agr_sk#1449L], functions=[sum(CASE WHEN (group_code#89 = BankPay) THEN sum_opt_amt#1464 ELSE 0E-10 END), sum(CASE WHEN (group_code#89 = BankReturn) THEN sum_opt_amt#1464 ELSE 0E-10 END), sum(CASE WHEN (group_code#89 = Cover) THEN sum_opt_amt#1464 ELSE 0E-10 END), sum(CASE WHEN group_code#89 IN (PrePay,Prepay,Pay,Expire) THEN sum_opt_amt#1464 ELSE 0E-10 END), sum(CASE WHEN (group_code#89 IN (DefPayFee,DefPayFeeGS,PayCredit,PayCredit5) AND (type_code#1467 = Commission)) THEN sum_opt_amt#1464 ELSE 0E-10 END), sum(CASE WHEN ((group_code#89 = PayProc) AND (type_code#1467 = Operation)) THEN sum_opt_amt#1464 ELSE 0E-10 END), max(CASE WHEN (group_code#89 = Migration) THEN 1 ELSE 0 END)])
+
+                              :           :     :                       :           :                          +- Exchange hashpartitioning(agr_sk#1449L, 50), ENSURE_REQUIREMENTS, [id=#498]
+
+                              :           :     :                       :           :                             +- *(1) HashAggregate(keys=[agr_sk#1449L], functions=[partial_sum(CASE WHEN (group_code#89 = BankPay) THEN sum_opt_amt#1464 ELSE 0E-10 END), partial_sum(CASE WHEN (group_code#89 = BankReturn) THEN sum_opt_amt#1464 ELSE 0E-10 END), partial_sum(CASE WHEN (group_code#89 = Cover) THEN sum_opt_amt#1464 ELSE 0E-10 END), partial_sum(CASE WHEN group_code#89 IN (PrePay,Prepay,Pay,Expire) THEN sum_opt_amt#1464 ELSE 0E-10 END), partial_sum(CASE WHEN (group_code#89 IN (DefPayFee,DefPayFeeGS,PayCredit,PayCredit5) AND (type_code#1467 = Commission)) THEN sum_opt_amt#1464 ELSE 0E-10 END), partial_sum(CASE WHEN ((group_code#89 = PayProc) AND (type_code#1467 = Operation)) THEN sum_opt_amt#1464 ELSE 0E-10 END), partial_max(CASE WHEN (group_code#89 = Migration) THEN 1 ELSE 0 END)])
+
+                              :           :     :                       :           :                                +- InMemoryTableScan [agr_sk#1449L, sum_opt_amt#1464, group_code#89, type_code#1467]
+
+                              :           :     :                       :           :                                      +- InMemoryRelation [agr_sk#1449L, sum_opt_amt#1464, group_code#89, type_code#1467], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :                                            +- *(3) Project [agr_sk#1449L, sum_opt_amt#1464, group_code#89, type_code#1467]
+
+                              :           :     :                       :           :                                               +- *(3) BroadcastNestedLoopJoin BuildRight, Cross, ((optn_dttm#1456 >= cast(period_start#8 as timestamp)) AND (optn_dttm#1456 < cast(date_add(report_date#7, 1) as timestamp)))
+
+                              :           :     :                       :           :                                                  :- *(3) Project [agr_sk#1449L, optn_dttm#1456, sum_opt_amt#1464, type_code#1467, group_code#89]
+
+                              :           :     :                       :           :                                                  :  +- *(3) BroadcastHashJoin [toptn_sk#1466L], [toptn_sk#93L], Inner, BuildRight, ((((group_code#89 = Migration) OR (group_code#89 IN (DefPayFee,DefPayFeeGS,PayCredit,PayCredit5) AND (type_code#1467 = Commission))) OR (group_code#89 IN (Cover,BankPay,PrePay,Prepay,Pay,Expire) AND (type_code#1467 = Operation))) OR group_code#89 IN (BankReturn,Request,ReturnSchedule,DeferPayReturn)), false
+
+                              :           :     :                       :           :                                                  :     :- *(3) Filter (isnotnull(toptn_sk#1466L) AND isnotnull(optn_dttm#1456))
+
+                              :           :     :                       :           :                                                  :     :  +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.optn [agr_sk#1449L, optn_dttm#1456, sum_opt_amt#1464, toptn_sk#1466L, type_code#1467], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`optn`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [acct_bserv_dp_code#1444, acct_bserv_sid#1445, acct_registry_dp_code#1446, acct_registry_sk#1447L..., Partition Cols: [p1month#1468]]
+
+                              :           :     :                       :           :                                                  :     +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false]),false), [id=#459]
+
+                              :           :     :                       :           :                                                  :        +- *(1) Filter (isnotnull(toptn_sk#93L) AND ((((group_code#89 = Migration) OR group_code#89 IN (DefPayFee,DefPayFeeGS,PayCredit,PayCredit5)) OR group_code#89 IN (Cover,BankPay,PrePay,Prepay,Pay,Expire)) OR group_code#89 IN (BankReturn,Request,ReturnSchedule,DeferPayReturn)))
+
+                              :           :     :                       :           :                                                  :           +- InMemoryTableScan [toptn_sk#93L, group_code#89], [isnotnull(toptn_sk#93L), ((((group_code#89 = Migration) OR group_code#89 IN (DefPayFee,DefPayFeeGS,PayCredit,PayCredit5)) OR group_code#89 IN (Cover,BankPay,PrePay,Prepay,Pay,Expire)) OR group_code#89 IN (BankReturn,Request,ReturnSchedule,DeferPayReturn))]
+
+                              :           :     :                       :           :                                                  :                 +- InMemoryRelation [toptn_sk#93L, group_code#89], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :                                                  :                       +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.toptn [toptn_sk#93L, group_code#89], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`toptn`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [code#85, ctl_loading#86L, ctl_validfrom#87, deleted_flag#88, group_code#89, name#90, sid#91, top..., Partition Cols: []]
+
+                              :           :     :                       :           :                                                  +- BroadcastExchange IdentityBroadcastMode, [id=#466]
+
+                              :           :     :                       :           :                                                     +- *(2) Filter (isnotnull(period_start#8) AND isnotnull(report_date#7))
+
+                              :           :     :                       :           :                                                        +- InMemoryTableScan [period_start#8, report_date#7], [isnotnull(period_start#8), isnotnull(report_date#7)]
+
+                              :           :     :                       :           :                                                              +- InMemoryRelation [report_date#7, period_start#8], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :           :                                                                    +- LocalTableScan [report_date#7, period_start#8]
+
+                              :           :     :                       :           +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false]),false), [id=#850]
+
+                              :           :     :                       :              +- *(4) Filter isnotnull(map_crncy_sk#45L)
+
+                              :           :     :                       :                 +- InMemoryTableScan [map_crncy_sk#45L, digital_code#28], [isnotnull(map_crncy_sk#45L)]
+
+                              :           :     :                       :                       +- InMemoryRelation [map_crncy_sk#45L, digital_code#28], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                       :                             +- *(1) Project [crncy_sk#23L AS map_crncy_sk#45L, digital_code#28]
+
+                              :           :     :                       :                                +- Scan hive prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp.crncy [crncy_sk#23L, digital_code#28], HiveTableRelation [`prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp`.`crncy`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [crncy_dp_code#21, crncy_end_dt#22, crncy_sk#23L, crncy_start_dt#24, ctl_loading#25L, ctl_validfr..., Partition Cols: []]
+
+                              :           :     :                       +- *(7) Filter isnotnull(rate_crncy_sk_deal#2069L)
+
+                              :           :     :                          +- InMemoryTableScan [rate_crncy_sk_deal#2069L, rub_rate_amt#2032, qty_rub_cnt#2031L], [isnotnull(rate_crncy_sk_deal#2069L)]
+
+                              :           :     :                                +- InMemoryRelation [rate_crncy_sk_deal#2069L, rub_rate_amt#2032, qty_rub_cnt#2031L], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                                      +- *(6) Project [crncy_sk#1981L AS rate_crncy_sk_deal#2069L, rub_rate_amt#2032, qty_rub_cnt#2031L]
+
+                              :           :     :                                         +- *(6) Filter (rn#2061 = 1)
+
+                              :           :     :                                            +- Window [row_number() windowspecdefinition(crncy_sk#1981L, point_dt#2030 DESC NULLS LAST, specifiedwindowframe(RowFrame, unboundedpreceding$(), currentrow$())) AS rn#2061], [crncy_sk#1981L], [point_dt#2030 DESC NULLS LAST]
+
+                              :           :     :                                               +- *(5) Sort [crncy_sk#1981L ASC NULLS FIRST, point_dt#2030 DESC NULLS LAST], false, 0
+
+                              :           :     :                                                  +- Exchange hashpartitioning(crncy_sk#1981L, 50), ENSURE_REQUIREMENTS, [id=#710]
+
+                              :           :     :                                                     +- *(4) Project [crncy_sk#1981L, point_dt#2030, rub_rate_amt#2032, qty_rub_cnt#2031L]
+
+                              :           :     :                                                        +- *(4) BroadcastNestedLoopJoin BuildRight, Cross, (point_dt#2030 <= report_date#7)
+
+                              :           :     :                                                           :- *(4) Project [crncy_sk#1981L, point_dt#2030, rub_rate_amt#2032, qty_rub_cnt#2031L]
+
+                              :           :     :                                                           :  +- *(4) BroadcastHashJoin [cbr_exchange_rate_sk#2005L], [cbr_exchange_rate_sk#2027L], Inner, BuildLeft, false
+
+                              :           :     :                                                           :     :- BroadcastExchange HashedRelationBroadcastMode(List(input[1, bigint, true]),false), [id=#696]
+
+                              :           :     :                                                           :     :  +- *(2) Project [crncy_sk#1981L, cbr_exchange_rate_sk#2005L]
+
+                              :           :     :                                                           :     :     +- *(2) BroadcastHashJoin [crncy_sk#1981L], [crncy_sk#2008L], Inner, BuildLeft, false
+
+                              :           :     :                                                           :     :        :- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false]),false), [id=#689]
+
+                              :           :     :                                                           :     :        :  +- *(1) Filter isnotnull(crncy_sk#1981L)
+
+                              :           :     :                                                           :     :        :     +- Scan hive prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp.crncy [crncy_sk#1981L], HiveTableRelation [`prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp`.`crncy`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [crncy_dp_code#1979, crncy_end_dt#1980, crncy_sk#1981L, crncy_start_dt#1982, ctl_loading#1983L, c..., Partition Cols: []]
+
+                              :           :     :                                                           :     :        +- *(2) Filter (isnotnull(crncy_sk#2008L) AND isnotnull(cbr_exchange_rate_sk#2005L))
+
+                              :           :     :                                                           :     :           +- Scan hive prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp.cbr_exchange_rate [crncy_sk#2008L, cbr_exchange_rate_sk#2005L], HiveTableRelation [`prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp`.`cbr_exchange_rate`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [cbr_exchange_rate_dp_code#2004, cbr_exchange_rate_sk#2005L, cbr_rate_flag#2006, crncy_dp_code#20..., Partition Cols: []]
+
+                              :           :     :                                                           :     +- *(4) Filter (isnotnull(cbr_exchange_rate_sk#2027L) AND isnotnull(point_dt#2030))
+
+                              :           :     :                                                           :        +- Scan hive prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp.cbr_exchange_rate_dt [cbr_exchange_rate_sk#2027L, point_dt#2030, rub_rate_amt#2032, qty_rub_cnt#2031L], HiveTableRelation [`prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp`.`cbr_exchange_rate_dt`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [cbr_exchange_rate_dp_code#2026, cbr_exchange_rate_sk#2027L, ctl_loading#2028L, ctl_validfrom#202..., Partition Cols: [p1month#2033]]
+
+                              :           :     :                                                           +- BroadcastExchange IdentityBroadcastMode, [id=#705]
+
+                              :           :     :                                                              +- *(3) Filter isnotnull(report_date#7)
+
+                              :           :     :                                                                 +- InMemoryTableScan [report_date#7], [isnotnull(report_date#7)]
+
+                              :           :     :                                                                       +- InMemoryRelation [report_date#7, period_start#8], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :     :                                                                             +- LocalTableScan [report_date#7, period_start#8]
+
+                              :           :     +- *(2) Sort [agr_sk#2994L ASC NULLS FIRST], false, 0
+
+                              :           :        +- *(2) Filter isnotnull(agr_sk#2994L)
+
+                              :           :           +- *(2) ColumnarToRow
+
+                              :           :              +- InMemoryTableScan [agr_sk#2994L, op_crncy_sk#1920L], [isnotnull(agr_sk#2994L)]
+
+                              :           :                    +- InMemoryRelation [agr_sk#2994L, op_crncy_sk#1920L], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :                          +- *(2) HashAggregate(keys=[agr_sk#1449L], functions=[first(crncy_sk#1451L, false)])
+
+                              :           :                             +- Exchange hashpartitioning(agr_sk#1449L, 50), ENSURE_REQUIREMENTS, [id=#598]
+
+                              :           :                                +- *(1) HashAggregate(keys=[agr_sk#1449L], functions=[partial_first(crncy_sk#1451L, false)])
+
+                              :           :                                   +- *(1) ColumnarToRow
+
+                              :           :                                      +- InMemoryTableScan [agr_sk#1449L, crncy_sk#1451L]
+
+                              :           :                                            +- InMemoryRelation [agr_sk#1449L, crncy_sk#1451L], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :                                                  +- *(3) Project [agr_sk#1449L, crncy_sk#1451L]
+
+                              :           :                                                     +- *(3) BroadcastNestedLoopJoin BuildRight, Cross, ((optn_dttm#1456 >= cast(period_start#8 as timestamp)) AND (optn_dttm#1456 < cast(date_add(report_date#7, 1) as timestamp)))
+
+                              :           :                                                        :- *(3) Project [agr_sk#1449L, optn_dttm#1456, crncy_sk#1451L]
+
+                              :           :                                                        :  +- *(3) BroadcastHashJoin [toptn_sk#1466L], [toptn_sk#93L], Inner, BuildRight, ((((group_code#89 = Migration) OR (group_code#89 IN (DefPayFee,DefPayFeeGS,PayCredit,PayCredit5) AND (type_code#1467 = Commission))) OR (group_code#89 IN (Cover,BankPay,PrePay,Prepay,Pay,Expire) AND (type_code#1467 = Operation))) OR group_code#89 IN (BankReturn,Request,ReturnSchedule,DeferPayReturn)), false
+
+                              :           :                                                        :     :- *(3) Filter (isnotnull(toptn_sk#1466L) AND isnotnull(optn_dttm#1456))
+
+                              :           :                                                        :     :  +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.optn [agr_sk#1449L, optn_dttm#1456, crncy_sk#1451L, toptn_sk#1466L, type_code#1467], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`optn`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [acct_bserv_dp_code#1444, acct_bserv_sid#1445, acct_registry_dp_code#1446, acct_registry_sk#1447L..., Partition Cols: [p1month#1468]]
+
+                              :           :                                                        :     +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false]),false), [id=#554]
+
+                              :           :                                                        :        +- *(1) Filter (isnotnull(toptn_sk#93L) AND ((((group_code#89 = Migration) OR group_code#89 IN (DefPayFee,DefPayFeeGS,PayCredit,PayCredit5)) OR group_code#89 IN (Cover,BankPay,PrePay,Prepay,Pay,Expire)) OR group_code#89 IN (BankReturn,Request,ReturnSchedule,DeferPayReturn)))
+
+                              :           :                                                        :           +- InMemoryTableScan [toptn_sk#93L, group_code#89], [isnotnull(toptn_sk#93L), ((((group_code#89 = Migration) OR group_code#89 IN (DefPayFee,DefPayFeeGS,PayCredit,PayCredit5)) OR group_code#89 IN (Cover,BankPay,PrePay,Prepay,Pay,Expire)) OR group_code#89 IN (BankReturn,Request,ReturnSchedule,DeferPayReturn))]
+
+                              :           :                                                        :                 +- InMemoryRelation [toptn_sk#93L, group_code#89], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :                                                        :                       +- Scan hive prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.toptn [toptn_sk#93L, group_code#89], HiveTableRelation [`prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp`.`toptn`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [code#85, ctl_loading#86L, ctl_validfrom#87, deleted_flag#88, group_code#89, name#90, sid#91, top..., Partition Cols: []]
+
+                              :           :                                                        +- BroadcastExchange IdentityBroadcastMode, [id=#561]
+
+                              :           :                                                           +- *(2) Filter (isnotnull(period_start#8) AND isnotnull(report_date#7))
+
+                              :           :                                                              +- InMemoryTableScan [period_start#8, report_date#7], [isnotnull(period_start#8), isnotnull(report_date#7)]
+
+                              :           :                                                                    +- InMemoryRelation [report_date#7, period_start#8], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :           :                                                                          +- LocalTableScan [report_date#7, period_start#8]
+
+                              :           +- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false]),false), [id=#994]
+
+                              :              +- *(3) Filter isnotnull(op_map_crncy_sk#82L)
+
+                              :                 +- InMemoryTableScan [op_map_crncy_sk#82L, digital_code#65], [isnotnull(op_map_crncy_sk#82L)]
+
+                              :                       +- InMemoryRelation [op_map_crncy_sk#82L, digital_code#65], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                              :                             +- *(1) Project [crncy_sk#23L AS map_crncy_sk#45L, digital_code#28]
+
+                              :                                +- Scan hive prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp.crncy [crncy_sk#23L, digital_code#28], HiveTableRelation [`prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp`.`crncy`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [crncy_dp_code#21, crncy_end_dt#22, crncy_sk#23L, crncy_start_dt#24, ctl_loading#25L, ctl_validfr..., Partition Cols: []]
+
+                              +- *(6) Filter isnotnull(rate_crncy_sk_op#2151L)
+
+                                 +- InMemoryTableScan [rate_crncy_sk_op#2151L, rub_rate_amt#3149, qty_rub_cnt#3148L], [isnotnull(rate_crncy_sk_op#2151L)]
+
+                                       +- InMemoryRelation [rate_crncy_sk_op#2151L, rub_rate_amt#3149, qty_rub_cnt#3148L], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                                             +- *(6) Project [crncy_sk#1981L AS rate_crncy_sk_deal#2069L, rub_rate_amt#2032, qty_rub_cnt#2031L]
+
+                                                +- *(6) Filter (rn#2061 = 1)
+
+                                                   +- Window [row_number() windowspecdefinition(crncy_sk#1981L, point_dt#2030 DESC NULLS LAST, specifiedwindowframe(RowFrame, unboundedpreceding$(), currentrow$())) AS rn#2061], [crncy_sk#1981L], [point_dt#2030 DESC NULLS LAST]
+
+                                                      +- *(5) Sort [crncy_sk#1981L ASC NULLS FIRST, point_dt#2030 DESC NULLS LAST], false, 0
+
+                                                         +- Exchange hashpartitioning(crncy_sk#1981L, 50), ENSURE_REQUIREMENTS, [id=#710]
+
+                                                            +- *(4) Project [crncy_sk#1981L, point_dt#2030, rub_rate_amt#2032, qty_rub_cnt#2031L]
+
+                                                               +- *(4) BroadcastNestedLoopJoin BuildRight, Cross, (point_dt#2030 <= report_date#7)
+
+                                                                  :- *(4) Project [crncy_sk#1981L, point_dt#2030, rub_rate_amt#2032, qty_rub_cnt#2031L]
+
+                                                                  :  +- *(4) BroadcastHashJoin [cbr_exchange_rate_sk#2005L], [cbr_exchange_rate_sk#2027L], Inner, BuildLeft, false
+
+                                                                  :     :- BroadcastExchange HashedRelationBroadcastMode(List(input[1, bigint, true]),false), [id=#696]
+
+                                                                  :     :  +- *(2) Project [crncy_sk#1981L, cbr_exchange_rate_sk#2005L]
+
+                                                                  :     :     +- *(2) BroadcastHashJoin [crncy_sk#1981L], [crncy_sk#2008L], Inner, BuildLeft, false
+
+                                                                  :     :        :- BroadcastExchange HashedRelationBroadcastMode(List(input[0, bigint, false]),false), [id=#689]
+
+                                                                  :     :        :  +- *(1) Filter isnotnull(crncy_sk#1981L)
+
+                                                                  :     :        :     +- Scan hive prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp.crncy [crncy_sk#1981L], HiveTableRelation [`prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp`.`crncy`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [crncy_dp_code#1979, crncy_end_dt#1980, crncy_sk#1981L, crncy_start_dt#1982, ctl_loading#1983L, c..., Partition Cols: []]
+
+                                                                  :     :        +- *(2) Filter (isnotnull(crncy_sk#2008L) AND isnotnull(cbr_exchange_rate_sk#2005L))
+
+                                                                  :     :           +- Scan hive prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp.cbr_exchange_rate [crncy_sk#2008L, cbr_exchange_rate_sk#2005L], HiveTableRelation [`prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp`.`cbr_exchange_rate`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [cbr_exchange_rate_dp_code#2004, cbr_exchange_rate_sk#2005L, cbr_rate_flag#2006, crncy_dp_code#20..., Partition Cols: []]
+
+                                                                  :     +- *(4) Filter (isnotnull(cbr_exchange_rate_sk#2027L) AND isnotnull(point_dt#2030))
+
+                                                                  :        +- Scan hive prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp.cbr_exchange_rate_dt [cbr_exchange_rate_sk#2027L, point_dt#2030, rub_rate_amt#2032, qty_rub_cnt#2031L], HiveTableRelation [`prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp`.`cbr_exchange_rate_dt`, org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe, Data Cols: [cbr_exchange_rate_dp_code#2026, cbr_exchange_rate_sk#2027L, ctl_loading#2028L, ctl_validfrom#202..., Partition Cols: [p1month#2033]]
+
+                                                                  +- BroadcastExchange IdentityBroadcastMode, [id=#705]
+
+                                                                     +- *(3) Filter isnotnull(report_date#7)
+
+                                                                        +- InMemoryTableScan [report_date#7], [isnotnull(report_date#7)]
+
+                                                                              +- InMemoryRelation [report_date#7, period_start#8], StorageLevel(disk, memory, deserialized, 1 replicas)
+
+                                                                                    +- LocalTableScan [report_date#7, period_start#8]
+
+ 
+
+ 
+
+root
+
+|-- report_date: date (nullable = true)
+
+|-- agr_sk: long (nullable = true)
+
+|-- agr_sid: string (nullable = true)
+
+|-- agr_num: string (nullable = true)
+
+|-- open_dt: date (nullable = true)
+
+|-- close_dt: date (nullable = true)
+
+|-- coverage_flag: boolean (nullable = true)
+
+|-- coverage_type_sk: long (nullable = true)
+
+|-- docum_tran_amt: decimal(38,10) (nullable = true)
+
+|-- docum_tran_crncy_sk: long (nullable = true)
+
+|-- buyer_inn: string (nullable = false)
+
+|-- seller_inn: string (nullable = false)
+
+|-- balance_amt: decimal(38,10) (nullable = true)
+
+|-- balance_rub: decimal(38,10) (nullable = true)
+
+|-- deferral_amt: decimal(38,10) (nullable = false)
+
+|-- deferral_rub: decimal(38,10) (nullable = true)
+
+|-- return_amt: decimal(38,10) (nullable = false)
+
+|-- return_rub: decimal(38,10) (nullable = true)
+
+|-- cover_amt: decimal(38,10) (nullable = false)
+
+|-- cover_rub: decimal(38,10) (nullable = true)
+
+|-- pay_amt: decimal(38,10) (nullable = false)
+
+|-- pay_rub: decimal(38,10) (nullable = true)
+
+|-- defer_fee_amt: decimal(38,10) (nullable = false)
+
+|-- interest_amt: decimal(38,10) (nullable = false)
+
+|-- is_migration: boolean (nullable = false)
+
+ 
+
++-----------+------------------+------------------------------------+------------+----------+----------+-------------+------------------+--------------------+-------------------+------------+----------+--------------------+--------------------+------------+------------+----------+----------+---------+---------+-------+-------+-------------+------------+------------+
+
+|report_date|agr_sk            |agr_sid                             |agr_num     |open_dt   |close_dt  |coverage_flag|coverage_type_sk  |docum_tran_amt      |docum_tran_crncy_sk|buyer_inn   |seller_inn|balance_amt         |balance_rub         |deferral_amt|deferral_rub|return_amt|return_rub|cover_amt|cover_rub|pay_amt|pay_rub|defer_fee_amt|interest_amt|is_migration|
+
++-----------+------------------+------------------------------------+------------+----------+----------+-------------+------------------+--------------------+-------------------+------------+----------+--------------------+--------------------+------------+------------+----------+----------+---------+---------+-------+-------+-------------+------------+------------+
+
+only showing top 10 rows
+
+ 
+
+✅ Готово! Строк: 292410
+
+spark = org.apache.spark.sql.SparkSession@1908db17
+
+s_tradefin = prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp
+
+s_gmrates = prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp
+
+s_rdm = prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp
+
+s_subj = prx_usl_subj_org_idl_snp_subj_h_usl_subj_org_idl_snp
+
+reportDate = 2025-12-12
+
+periodStart = 2020-12-12
+
+paramsDF = [report_date: date, period_start: date]
+
+crncyMapDF: ...
+
+[report_date: date, period_start: date]
+
+ 
+
+
+Конечно! Ниже — **всё в одном сообщении**, как вы и просили:
+
+ 
+
+---
+
+ 
+
+## 📌 1. **Исходный отчёт (цель)**
+
+ 
+
+> Построить витрину для анализа кредитных операций клиентов, включая:
+
+> - Данные по договорам (`agr`, `agr_fin`, `agr_proc`)
+
+> - Типы операций (`optn`, `toptn`)
+
+> - Курсы валют (`crncy`, `cbr_exchange_rate`)
+
+> - ИНН клиентов из двух источников (`subj_h`)
+
+> - Плановые платежи (`letter_cred_org_plan_payment`)
+
+> - Отбор по типам (`lct_sid IN ('1','2','10') OR agr_num LIKE 'ind%'`)
+
+> - Агрегация по операциям: отсрочки, возвраты, покрытия, комиссии
+
+> - Пересчёт в рубли по курсу ЦБ на `report_date`
+
+> - Флаги: `is_migration`, `has_valid_plan`
+
+ 
+
+---
+
+ 
+
+## 🔍 2. **SQL-запрос, эквивалентный итоговой витрине**
+
+ 
+
+```sql
+
+WITH params AS (
+
+  SELECT
+
+    current_date - INTERVAL 1 DAY AS report_date,
+
+    current_date - INTERVAL 5 YEAR AS period_start
+
+),
+
+ 
+
+-- Курсы валют
+
+rates AS (
+
+  SELECT
+
+    crncy_sk,
+
+    rub_rate_amt,
+
+    qty_rub_cnt
+
+  FROM (
+
+    SELECT
+
+      c.crncy_sk,
+
+      d.rub_rate_amt,
+
+      d.qty_rub_cnt,
+
+      ROW_NUMBER() OVER (PARTITION BY c.crncy_sk ORDER BY d.point_dt DESC) AS rn
+
+    FROM prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp.crncy c
+
+    JOIN prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp.cbr_exchange_rate r ON c.crncy_sk = r.crncy_sk
+
+    JOIN prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp.cbr_exchange_rate_dt d ON r.cbr_exchange_rate_sk = d.cbr_exchange_rate_sk
+
+    CROSS JOIN params
+
+    WHERE d.point_dt <= params.report_date
+
+  ) t
+
+  WHERE rn = 1
+
+),
+
+ 
+
+-- Основной датафрейм
+
+agr_base AS (
+
+  SELECT
+
+    a.agr_sk,
+
+    a.sid AS agr_sid,
+
+    a.num AS agr_num,
+
+    a.open_dt,
+
+    a.close_dt,
+
+    a.letter_cred_coverage_flag AS coverage_flag,
+
+    a.letter_cred_source_coverage_type_sk AS coverage_type_sk,
+
+    a.letter_cred_type_sk,
+
+    f.docum_tran_amt,
+
+    f.docum_tran_crncy_sk,
+
+    p.letter_cred_org_buyer_subj_sk,
+
+    p.docum_tran_seller_subj_sk
+
+  FROM prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr a
+
+  JOIN prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_fin f
+
+    ON a.agr_sk = f.agr_sk AND f.end_dt = '9999-12-31'
+
+  JOIN prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_proc p
+
+    ON a.agr_sk = p.agr_sk
+
+  JOIN prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.letter_cred_type t
+
+    ON a.letter_cred_type_sk = t.letter_cred_type_sk
+
+  CROSS JOIN params
+
+  WHERE t.sid IN ('1','2','10') OR a.num LIKE 'ind%'
+
+),
+
+ 
+
+-- Плановые платежи
+
+agr_with_plan AS (
+
+  SELECT
+
+    ab.*,
+
+    CASE WHEN
+
+      pm.plan_payment_agr_sk IS NOT NULL
+
+      AND SPLIT(pm.sid, '\\|')[0] IN ('VOZMPA4410', 'VOZMPA')
+
+      AND COALESCE(pm.letter_cred_org_plan_payment_amt, 0) > 0
+
+      AND pm.letter_cred_org_plan_payment_dt >= params.period_start
+
+    THEN 1 ELSE 0 END AS has_valid_plan
+
+  FROM agr_base ab
+
+  LEFT JOIN prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.letter_cred_org_plan_payment pm
+
+    ON ab.agr_sk = pm.plan_payment_agr_sk
+
+  CROSS JOIN params
+
+),
+
+ 
+
+-- ИТОГОВЫЙ фильтр
+
+agr_filtered AS (
+
+  SELECT *
+
+  FROM agr_with_plan
+
+  WHERE close_dt IS NULL OR close_dt > period_start OR has_valid_plan = 1
+
+),
+
+ 
+
+-- ИНН клиентов
+
+clients AS (
+
+  SELECT subj_sk, inn_num
+
+  FROM prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.subj_h
+
+  WHERE end_dt = '9999-12-31'
+
+  UNION
+
+  SELECT subj_sk, inn_num
+
+  FROM prx_usl_subj_org_idl_snp_subj_h_usl_subj_org_idl_snp.subj_h
+
+  WHERE end_dt = '9999-12-31'
+
+),
+
+ 
+
+-- Добавляем ИНН
+
+agr_with_inn AS (
+
+  SELECT
+
+    a.*,
+
+    COALESCE(b.inn_num, '') AS buyer_inn,
+
+    COALESCE(s.inn_num, '') AS seller_inn
+
+  FROM agr_filtered a
+
+  LEFT JOIN clients b ON a.letter_cred_org_buyer_subj_sk = b.subj_sk
+
+  LEFT JOIN clients s ON a.docum_tran_seller_subj_sk = s.subj_sk
+
+),
+
+ 
+
+-- Операции
+
+operations AS (
+
+  SELECT
+
+    o.agr_sk,
+
+    o.sum_opt_amt,
+
+    t.group_code,
+
+    o.type_code,
+
+    o.crncy_sk
+
+  FROM prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.optn o
+
+  JOIN prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.toptn t
+
+    ON o.toptn_sk = t.toptn_sk
+
+  CROSS JOIN params
+
+  WHERE o.optn_dttm >= params.period_start
+
+    AND o.optn_dttm < DATE_ADD(params.report_date, 1)
+
+    AND (
+
+      t.group_code IN ('Migration')
+
+      OR (t.group_code IN ('DefPayFee','DefPayFeeGS','PayCredit','PayCredit5') AND o.type_code = 'Commission')
+
+     OR (t.group_code IN ('Cover','BankPay','PrePay','Prepay','Pay','Expire') AND o.type_code = 'Operation')
+
+      OR t.group_code IN ('BankReturn','Request','ReturnSchedule','DeferPayReturn')
+
+    )
+
+),
+
+ 
+
+-- Агрегации по операциям
+
+aggregated_ops AS (
+
+  SELECT
+
+    agr_sk,
+
+    SUM(CASE WHEN group_code = 'BankPay' THEN sum_opt_amt ELSE 0 END) AS deferral_amt,
+
+    SUM(CASE WHEN group_code = 'BankReturn' THEN sum_opt_amt ELSE 0 END) AS return_amt,
+
+    SUM(CASE WHEN group_code = 'Cover' THEN sum_opt_amt ELSE 0 END) AS cover_amt,
+
+    SUM(CASE WHEN group_code IN ('PrePay','Prepay','Pay','Expire') THEN sum_opt_amt ELSE 0 END) AS pay_amt,
+
+    SUM(CASE WHEN group_code IN ('DefPayFee','DefPayFeeGS','PayCredit','PayCredit5') AND type_code = 'Commission' THEN sum_opt_amt ELSE 0 END) AS defer_fee_amt,
+
+    SUM(CASE WHEN group_code = 'PayProc' AND type_code = 'Operation' THEN sum_opt_amt ELSE 0 END) AS interest_amt,
+
+    MAX(CASE WHEN group_code = 'Migration' THEN 1 ELSE 0 END) AS is_migration_flag
+
+  FROM operations
+
+  GROUP BY agr_sk
+
+),
+
+ 
+
+-- Валюта операций
+
+op_currency AS (
+
+  SELECT
+
+    agr_sk,
+
+    FIRST(crncy_sk) AS op_crncy_sk
+
+  FROM operations
+
+  GROUP BY agr_sk
+
+),
+
+ 
+
+-- Финальная витрина
+
+final_mart AS (
+
+  SELECT
+
+    p.report_date,
+
+    a.agr_sk,
+
+    a.agr_sid,
+
+    a.agr_num,
+
+    a.open_dt,
+
+    a.close_dt,
+
+    a.coverage_flag,
+
+    a.coverage_type_sk,
+
+    a.docum_tran_amt,
+
+    a.docum_tran_crncy_sk,
+
+    a.buyer_inn,
+
+    a.seller_inn,
+
+    a.docum_tran_amt AS balance_amt,
+
+    CASE WHEN dc.digital_code = '643' THEN a.docum_tran_amt
+
+         ELSE (a.docum_tran_amt * COALESCE(r.rub_rate_amt, 1)) / COALESCE(r.qty_rub_cnt, 1)
+
+    END AS balance_rub,
+
+    COALESCE(o.deferral_amt, 0) AS deferral_amt,
+
+    CASE WHEN oc.digital_code = '643' THEN COALESCE(o.deferral_amt, 0)
+
+         ELSE (COALESCE(o.deferral_amt, 0) * COALESCE(r2.rub_rate_amt, 1)) / COALESCE(r2.qty_rub_cnt, 1)
+
+    END AS deferral_rub,
+
+    COALESCE(o.return_amt, 0) AS return_amt,
+
+    CASE WHEN oc.digital_code = '643' THEN COALESCE(o.return_amt, 0)
+
+         ELSE (COALESCE(o.return_amt, 0) * COALESCE(r2.rub_rate_amt, 1)) / COALESCE(r2.qty_rub_cnt, 1)
+
+    END AS return_rub,
+
+    COALESCE(o.cover_amt, 0) AS cover_amt,
+
+    CASE WHEN oc.digital_code = '643' THEN COALESCE(o.cover_amt, 0)
+
+         ELSE (COALESCE(o.cover_amt, 0) * COALESCE(r2.rub_rate_amt, 1)) / COALESCE(r2.qty_rub_cnt, 1)
+
+    END AS cover_rub,
+
+    COALESCE(o.pay_amt, 0) AS pay_amt,
+
+    CASE WHEN oc.digital_code = '643' THEN COALESCE(o.pay_amt, 0)
+
+         ELSE (COALESCE(o.pay_amt, 0) * COALESCE(r2.rub_rate_amt, 1)) / COALESCE(r2.qty_rub_cnt, 1)
+
+    END AS pay_rub,
+
+    COALESCE(o.defer_fee_amt, 0) AS defer_fee_amt,
+
+    COALESCE(o.interest_amt, 0) AS interest_amt,
+
+    o.is_migration_flag = 1 AS is_migration
+
+  FROM agr_with_inn a
+
+  CROSS JOIN params p
+
+  LEFT JOIN aggregated_ops o ON a.agr_sk = o.agr_sk
+
+  LEFT JOIN prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp.crncy dc
+
+    ON a.docum_tran_crncy_sk = dc.crncy_sk
+
+  LEFT JOIN rates r ON dc.crncy_sk = r.crncy_sk
+
+  LEFT JOIN op_currency opc ON a.agr_sk = opc.agr_sk
+
+  LEFT JOIN prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp.crncy oc
+
+    ON opc.op_crncy_sk = oc.crncy_sk
+
+  LEFT JOIN rates r2 ON opc.op_crncy_sk = r2.crncy_sk
+
+)
+
+ 
+
+SELECT * FROM final_mart;
+
+```
+
+ 
+
+---
+
+ 
+
+## ⚙️ 3. **Итоговый Scala-скрипт (рабочий, проверенный)**
+
+ 
+
+```scala
+
+import org.apache.spark.sql.SparkSession
+
+import org.apache.spark.sql.functions._
+
+import org.apache.spark.sql.types._
+
+import org.apache.spark.sql.expressions.Window
+
+import java.time.LocalDate
+
+ 
+
+val spark = SparkSession.builder()
+
+  .appName("TF_Client_Credit_Report_Mart")
+
+  .config("spark.sql.adaptive.enabled", "true")
+
+  .config("spark.sql.shuffle.partitions", "50")
+
+  .getOrCreate()
+
+ 
+
+import spark.implicits._
+
+ 
+
+// Схемы
+
+val s_tradefin = "prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp"
+
+val s_gmrates = "prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp"
+
+val s_rdm = "prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp"
+
+val s_subj = "prx_usl_subj_org_idl_snp_subj_h_usl_subj_org_idl_snp"
+
+ 
+
+// Параметры
+
+val reportDate = LocalDate.now.minusDays(1)
+
+val periodStart = reportDate.minusYears(5)
+
+ 
+
+val paramsDF = Seq((reportDate, periodStart))
+
+  .toDF("report_date", "period_start")
+
+  .cache()
+
+ 
+
+// Словари
+
+val crncyMapDF = spark.table(s"$s_rdm.crncy")
+
+  .select($"crncy_sk".alias("map_crncy_sk"), $"digital_code")
+
+  .cache()
+
+ 
+
+val crncyMapOps = spark.table(s"$s_rdm.crncy")
+
+  .select($"crncy_sk".alias("op_map_crncy_sk"), $"digital_code")
+
+  .cache()
+
+ 
+
+val toptnMapDF = spark.table(s"$s_tradefin.toptn")
+
+  .select($"toptn_sk", $"group_code")
+
+  .cache()
+
+ 
+
+// Основные таблицы
+
+val agr = spark.table(s"$s_tradefin.agr")
+
+  .select(
+
+    $"agr_sk",
+
+    $"sid".alias("agr_sid"),
+
+    $"num".alias("agr_num"),
+
+    $"open_dt",
+
+    $"close_dt",
+
+    $"letter_cred_coverage_flag".alias("coverage_flag"),
+
+    $"letter_cred_source_coverage_type_sk".alias("coverage_type_sk"),
+
+    $"letter_cred_type_sk"
+
+  )
+
+ 
+
+val agrFin = spark.table(s"$s_tradefin.agr_fin")
+
+  .filter($"end_dt" === "9999-12-31")
+
+  .select($"agr_sk", $"docum_tran_amt", $"docum_tran_crncy_sk")
+
+ 
+
+val agrProc = spark.table(s"$s_tradefin.agr_proc")
+
+  .select($"agr_sk", $"letter_cred_org_buyer_subj_sk", $"docum_tran_seller_subj_sk")
+
+ 
+
+val lct = spark.table(s"$s_tradefin.letter_cred_type")
+
+  .select($"letter_cred_type_sk", $"sid".alias("lct_sid"))
+
+ 
+
+val pm = spark.table(s"$s_tradefin.letter_cred_org_plan_payment")
+
+  .select($"plan_payment_agr_sk", $"sid".alias("pm_sid"), $"letter_cred_org_plan_payment_dt", $"letter_cred_org_plan_payment_amt")
+
+ 
+
+// Основной датафрейм
+
+val agrBaseDF = agr
+
+  .join(agrFin, Seq("agr_sk"))
+
+  .join(agrProc, Seq("agr_sk"))
+
+  .join(lct, Seq("letter_cred_type_sk"))
+
+  .filter($"lct_sid".isin("1", "2", "10") || $"agr_num".startsWith("ind"))
+
+  .select(
+
+    $"agr_sk",
+
+    $"agr_sid",
+
+    $"agr_num",
+
+    $"open_dt",
+
+    $"close_dt",
+
+    $"coverage_flag",
+
+    $"coverage_type_sk",
+
+    $"docum_tran_amt",
+
+    $"docum_tran_crncy_sk",
+
+    $"letter_cred_org_buyer_subj_sk",
+
+    $"docum_tran_seller_subj_sk"
+
+  )
+
+  .cache()
+
+ 
+
+// Плановые платежи
+
+val agrWithPM = agrBaseDF
+
+  .join(pm, $"agr_sk" === $"plan_payment_agr_sk", "left")
+
+  .crossJoin(paramsDF.select("period_start"))
+
+ 
+
+val agrBaseFinal = agrWithPM
+
+  .groupBy(
+
+    "agr_sk", "agr_sid", "agr_num", "open_dt", "close_dt",
+
+    "coverage_flag", "coverage_type_sk", "docum_tran_amt", "docum_tran_crncy_sk",
+
+    "letter_cred_org_buyer_subj_sk", "docum_tran_seller_subj_sk", "period_start"
+
+  )
+
+  .agg(
+
+    max(
+
+      when(
+
+        $"plan_payment_agr_sk".isNotNull &&
+
+        split($"pm_sid", "\\|").getItem(0).isin("VOZMPA4410", "VOZMPA") &&
+
+        coalesce($"letter_cred_org_plan_payment_amt", lit(0)) > 0 &&
+
+        $"letter_cred_org_plan_payment_dt" >= $"period_start",
+
+        1
+
+      ).otherwise(0)
+
+    ).alias("has_valid_plan")
+
+  )
+
+  .filter(
+
+    $"close_dt".isNull ||
+
+    $"close_dt" > $"period_start" ||
+
+    $"has_valid_plan" === 1
+
+  )
+
+  .drop("period_start", "has_valid_plan")
+
+  .cache()
+
+ 
+
+// Клиенты
+
+val subjH1 = spark.table(s"$s_tradefin.subj_h")
+
+  .filter($"end_dt" === "9999-12-31")
+
+  .select($"subj_sk", $"inn_num")
+
+ 
+
+val subjH2 = spark.table(s"$s_subj.subj_h")
+
+  .filter($"end_dt" === "9999-12-31")
+
+  .select($"subj_sk", $"inn_num")
+
+ 
+
+val clientsCleanDF = subjH1
+
+  .union(subjH2)
+
+  .distinct()
+
+  .withColumnRenamed("subj_sk", "clients_subj_sk")
+
+  .withColumnRenamed("inn_num", "clients_inn_num")
+
+  .cache()
+
+ 
+
+val agrWithPartiesDF = agrBaseFinal
+
+  .join(clientsCleanDF, $"letter_cred_org_buyer_subj_sk" === $"clients_subj_sk", "left")
+
+  .withColumn("buyer_inn", coalesce($"clients_inn_num", lit("")))
+
+  .drop("clients_subj_sk", "clients_inn_num")
+
+  .join(clientsCleanDF, $"docum_tran_seller_subj_sk" === $"clients_subj_sk", "left")
+
+  .withColumn("seller_inn", coalesce($"clients_inn_num", lit("")))
+
+  .drop("clients_subj_sk", "clients_inn_num")
+
+  .select(
+
+    $"agr_sk",
+
+    $"agr_sid",
+
+    $"agr_num",
+
+    $"open_dt",
+
+    $"close_dt",
+
+    $"coverage_flag",
+
+    $"coverage_type_sk",
+
+    $"docum_tran_amt",
+
+    $"docum_tran_crncy_sk",
+
+    $"buyer_inn",
+
+    $"seller_inn"
+
+  )
+
+  .cache()
+
+ 
+
+// Операции
+
+val optn = spark.table(s"$s_tradefin.optn")
+
+  .select($"agr_sk", $"optn_dttm", $"sum_opt_amt", $"crncy_sk", $"toptn_sk", $"type_code")
+
+ 
+
+val operationsDF = optn
+
+  .join(toptnMapDF, Seq("toptn_sk"))
+
+  .crossJoin(paramsDF.select("period_start", "report_date"))
+
+ .filter($"optn_dttm" >= $"period_start" && $"optn_dttm" < date_add($"report_date", 1))
+
+  .filter(
+
+    $"group_code".isin("Migration") ||
+
+    ($"group_code".isin("DefPayFee", "DefPayFeeGS", "PayCredit", "PayCredit5") && $"type_code" === "Commission") ||
+
+    ($"group_code".isin("Cover", "BankPay", "PrePay", "Prepay", "Pay", "Expire") && $"type_code" === "Operation") ||
+
+    $"group_code".isin("BankReturn", "Request", "ReturnSchedule", "DeferPayReturn")
+
+  )
+
+  .select($"agr_sk", $"sum_opt_amt", $"group_code", $"type_code")
+
+  .cache()
+
+ 
+
+// Агрегации
+
+val aggregatedOpsDF = operationsDF
+
+  .groupBy("agr_sk")
+
+  .agg(
+
+    sum(when($"group_code" === "BankPay", $"sum_opt_amt").otherwise(0)).alias("deferral_amt"),
+
+    sum(when($"group_code" === "BankReturn", $"sum_opt_amt").otherwise(0)).alias("return_amt"),
+
+    sum(when($"group_code" === "Cover", $"sum_opt_amt").otherwise(0)).alias("cover_amt"),
+
+    sum(when($"group_code".isin("PrePay", "Prepay", "Pay", "Expire"), $"sum_opt_amt").otherwise(0)).alias("pay_amt"),
+
+    sum(when($"group_code".isin("DefPayFee", "DefPayFeeGS", "PayCredit", "PayCredit5") && $"type_code" === "Commission", $"sum_opt_amt").otherwise(0)).alias("defer_fee_amt"),
+
+    sum(when($"group_code" === "PayProc" && $"type_code" === "Operation", $"sum_opt_amt").otherwise(0)).alias("interest_amt"),
+
+    max(when($"group_code" === "Migration", 1).otherwise(0)).alias("is_migration_flag")
+
+  )
+
+  .cache()
+
+ 
+
+// Курс для операций — отдельно
+
+val opsCrncyDF = optn
+
+  .join(toptnMapDF, Seq("toptn_sk"))
+
+  .crossJoin(paramsDF.select("period_start", "report_date"))
+
+  .filter($"optn_dttm" >= $"period_start" && $"optn_dttm" < date_add($"report_date", 1))
+
+  .filter(
+
+    $"group_code".isin("Migration") ||
+
+    ($"group_code".isin("DefPayFee", "DefPayFeeGS", "PayCredit", "PayCredit5") && $"type_code" === "Commission") ||
+
+    ($"group_code".isin("Cover", "BankPay", "PrePay", "Prepay", "Pay", "Expire") && $"type_code" === "Operation") ||
+
+    $"group_code".isin("BankReturn", "Request", "ReturnSchedule", "DeferPayReturn")
+
+  )
+
+  .select($"agr_sk", $"crncy_sk")
+
+  .cache()
+
+ 
+
+val opsCurr = opsCrncyDF.groupBy("agr_sk").agg(first("crncy_sk").alias("op_crncy_sk")).cache()
+
+ 
+
+// Курсы валют — ДВА ОТДЕЛЬНЫХ DATAFRAME
+
+val crncy = spark.table(s"$s_rdm.crncy").select($"crncy_sk")
+
+val cbrRate = spark.table(s"$s_gmrates.cbr_exchange_rate").select($"crncy_sk", $"cbr_exchange_rate_sk")
+
+val cbrRateDt = spark.table(s"$s_gmrates.cbr_exchange_rate_dt").select($"cbr_exchange_rate_sk", $"point_dt", $"rub_rate_amt", $"qty_rub_cnt")
+
+ 
+
+val ratesDF_Deal = crncy
+
+  .join(cbrRate, Seq("crncy_sk"))
+
+  .join(cbrRateDt, Seq("cbr_exchange_rate_sk"))
+
+  .crossJoin(paramsDF.select("report_date"))
+
+  .filter($"point_dt" <= $"report_date")
+
+  .withColumn("rn", row_number().over(Window.partitionBy("crncy_sk").orderBy($"point_dt".desc)))
+
+  .filter($"rn" === 1)
+
+  .select($"crncy_sk".alias("rate_crncy_sk_deal"), $"rub_rate_amt", $"qty_rub_cnt")
+
+  .cache()
+
+ 
+
+val ratesDF_Op = crncy
+
+  .join(cbrRate, Seq("crncy_sk"))
+
+  .join(cbrRateDt, Seq("cbr_exchange_rate_sk"))
+
+  .crossJoin(paramsDF.select("report_date"))
+
+  .filter($"point_dt" <= $"report_date")
+
+  .withColumn("rn", row_number().over(Window.partitionBy("crncy_sk").orderBy($"point_dt".desc)))
+
+  .filter($"rn" === 1)
+
+  .select($"crncy_sk".alias("rate_crncy_sk_op"), $"rub_rate_amt", $"qty_rub_cnt")
+
+  .cache()
+
+ 
+
+// Финальная витрина
+
+var finalDF = agrWithPartiesDF
+
+  .crossJoin(paramsDF.select("report_date"))
+
+  .join(aggregatedOpsDF, Seq("agr_sk"), "left")
+
+  .join(crncyMapDF, $"docum_tran_crncy_sk" === $"map_crncy_sk", "left")
+
+  .withColumnRenamed("digital_code", "deal_digital_code")
+
+  .join(ratesDF_Deal, $"map_crncy_sk" === $"rate_crncy_sk_deal", "left")
+
+  .withColumn("balance_amt", $"docum_tran_amt")
+
+  .withColumn("balance_rub",
+
+    when($"deal_digital_code" === "643", $"docum_tran_amt")
+
+    .otherwise(($"docum_tran_amt" * coalesce($"rub_rate_amt", lit(1))) / coalesce($"qty_rub_cnt", lit(1)))
+
+  )
+
+  .drop("deal_digital_code", "rub_rate_amt", "qty_rub_cnt", "map_crncy_sk", "rate_crncy_sk_deal")
+
+  .cache()
+
+ 
+
+finalDF = finalDF
+
+  .join(opsCurr, Seq("agr_sk"), "left")
+
+  .join(crncyMapOps, $"op_crncy_sk" === $"op_map_crncy_sk", "left")
+
+  .withColumnRenamed("digital_code", "op_digital_code")
+
+  .join(ratesDF_Op, $"op_crncy_sk" === $"rate_crncy_sk_op", "left")
+
+  .withColumnRenamed("rub_rate_amt", "op_rub_rate_amt")
+
+  .withColumnRenamed("qty_rub_cnt", "op_qty_rub_cnt")
+
+  .drop("op_map_crncy_sk", "rate_crncy_sk_op")
+
+  .cache()
+
+ 
+
+// Финальный select
+
+finalDF = finalDF.select(
+
+  $"report_date",
+
+  $"agr_sk",
+
+  $"agr_sid",
+
+  $"agr_num",
+
+  $"open_dt",
+
+  $"close_dt",
+
+  $"coverage_flag",
+
+  $"coverage_type_sk",
+
+  $"docum_tran_amt",
+
+  $"docum_tran_crncy_sk",
+
+  $"buyer_inn",
+
+  $"seller_inn",
+
+  $"balance_amt",
+
+  $"balance_rub",
+
+  coalesce($"deferral_amt", lit(0)).alias("deferral_amt"),
+
+  when($"op_digital_code" === "643", coalesce($"deferral_amt", lit(0)))
+
+   .otherwise((coalesce($"deferral_amt", lit(0)) * coalesce($"op_rub_rate_amt", lit(1))) / coalesce($"op_qty_rub_cnt", lit(1)))
+
+   .alias("deferral_rub"),
+
+  coalesce($"return_amt", lit(0)).alias("return_amt"),
+
+  when($"op_digital_code" === "643", coalesce($"return_amt", lit(0)))
+
+   .otherwise((coalesce($"return_amt", lit(0)) * coalesce($"op_rub_rate_amt", lit(1))) / coalesce($"op_qty_rub_cnt", lit(1)))
+
+   .alias("return_rub"),
+
+  coalesce($"cover_amt", lit(0)).alias("cover_amt"),
+
+  when($"op_digital_code" === "643", coalesce($"cover_amt", lit(0)))
+
+   .otherwise((coalesce($"cover_amt", lit(0)) * coalesce($"op_rub_rate_amt", lit(1))) / coalesce($"op_qty_rub_cnt", lit(1)))
+
+   .alias("cover_rub"),
+
+  coalesce($"pay_amt", lit(0)).alias("pay_amt"),
+
+  when($"op_digital_code" === "643", coalesce($"pay_amt", lit(0)))
+
+   .otherwise((coalesce($"pay_amt", lit(0)) * coalesce($"op_rub_rate_amt", lit(1))) / coalesce($"op_qty_rub_cnt", lit(1)))
+
+   .alias("pay_rub"),
+
+  coalesce($"defer_fee_amt", lit(0)).alias("defer_fee_amt"),
+
+  coalesce($"interest_amt", lit(0)).alias("interest_amt"),
+
+  when($"is_migration_flag" === 1, lit(true)).otherwise(lit(false)).alias("is_migration")
+
+).cache()
+
+ 
+
+// Результат
+
+finalDF.explain()
+
+finalDF.printSchema()
+
+finalDF.show(10, truncate = false)
+
+println(s"✅ Готово! Строк: ${finalDF.count()}")
+
+```
+
+ 
+
+---
+
+ 
+
+## ✅ Готово!
+
+ 
+
+Теперь у вас есть:
+
+- 📝 **Пояснение цели**
+
+- 🔍 **SQL-аналог витрины**
+
+- ⚙️ **Рабочий Scala-скрипт**
+
+ 
+
+Если нужно:
+
+- Сохранить в таблицу?
+
+- Сделать Airflow DAG?
+
+- Оптимизировать под прод?
+
+ 
+
+Пиши: 
+
+👉 "Нужно сохранение" 
+
+или 
+
+👉 "Готово, спасибо"
