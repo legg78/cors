@@ -653,3 +653,539 @@ left join usl_rdm_idl_spark_snp.crncy crncy_b
   on B.crncy_sk = crncy_b.crncy_sk
 left join usl_rdm_idl_spark_snp.crncy crncy_a
   on A.crncy_sk = crncy_a.crncy_sk
+
+
+
+
+
+
+createtab_stmt
+
+CREATE EXTERNAL TABLE `subj_h`(
+
+`ctl_loading` bigint,
+
+`ctl_validfrom` timestamp,
+
+`end_dt` date,
+
+`inn_num` string,
+
+`start_dt` date,
+
+`subj_dp_code` string,
+
+`subj_sk` bigint,
+
+`tax_resident_rf_flag` boolean,
+
+`type_code` string)
+
+PARTITIONED BY (
+
+`p1month` string)
+
+ROW FORMAT SERDE
+
+'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+
+STORED AS INPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+
+OUTPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+
+LOCATION
+
+'hdfs://hdfsgw/arnsdpfess2__USL_TRADEFIN_IDL_SNP_TAV-USL_TRADEFIN_IDL_SNP-SUBJ_H/data/usl/tradefin_idl/snp/subj_h'
+
+TBLPROPERTIES (
+
+'bucketing_version'='2',
+
+'spark.sql.create.version'='2.2 or prior',
+
+'spark.sql.sources.schema.numPartCols'='1',
+
+'spark.sql.sources.schema.numParts'='1',
+
+'spark.sql.sources.schema.part.0'='{"type":"struct","fields":[{"name":"ctl_loading","type":"long","nullable":true,"metadata":{}},{"name":"ctl_validfrom","type":"timestamp","nullable":true,"metadata":{}},{"name":"end_dt","type":"date","nullable":true,"metadata":{}},{"name":"inn_num","type":"string","nullable":true,"metadata":{}},{"name":"start_dt","type":"date","nullable":true,"metadata":{}},{"name":"subj_dp_code","type":"string","nullable":true,"metadata":{}},{"name":"subj_sk","type":"long","nullable":true,"metadata":{}},{"name":"tax_resident_rf_flag","type":"boolean","nullable":true,"metadata":{}},{"name":"type_code","type":"string","nullable":true,"metadata":{}},{"name":"p1month","type":"string","nullable":true,"metadata":{}}]}',
+
+'spark.sql.sources.schema.partCol.0'='p1month',
+
+'transient_lastDdlTime'='1765607821')
+
+ 
+
+createtab_stmt
+
+CREATE EXTERNAL TABLE `prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.subj_h`(
+
+`ctl_loading` bigint,
+
+`ctl_validfrom` timestamp,
+
+`end_dt` date,
+
+`inn_num` string,
+
+`start_dt` date,
+
+`subj_dp_code` string,
+
+`subj_sk` bigint,
+
+`tax_resident_rf_flag` boolean,
+
+`type_code` string)
+
+PARTITIONED BY (
+
+`p1month` string)
+
+ROW FORMAT SERDE
+
+'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+
+STORED AS INPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+
+OUTPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+
+LOCATION
+
+'hdfs://hdfsgw/arnsdpfess2__USL_TRADEFIN_NDL_UVDO_XS_SNP-USL_TRADEFIN_NDL_UVDO_XS_SNP-SUBJ_H/data/usl/tradefin_ndl_uvdo_xs/snp/subj_h'
+
+TBLPROPERTIES (
+
+'bucketing_version'='2',
+
+'spark.sql.partitionProvider'='catalog',
+
+'transient_lastDdlTime'='1765597417')
+
+ 
+
+createtab_stmt
+
+CREATE EXTERNAL TABLE `prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr`(
+
+`agr_dp_code` string,
+
+`agr_sk` bigint,
+
+`close_dt` date,
+
+`crpcr_cgc_prod_dp_code` string,
+
+`crpcr_cgc_prod_sk` bigint,
+
+`crpcr_creditor_subj_dp_code` string,
+
+`crpcr_creditor_subj_sk` bigint,
+
+`crpcr_debtor_subj_dp_code` string,
+
+`crpcr_debtor_subj_sk` bigint,
+
+`crpcr_first_give_dt` date,
+
+`crpcr_line_agr_dp_code` string,
+
+`crpcr_line_agr_sk` bigint,
+
+`crpcr_line_limit_change_flag` boolean,
+
+`crpcr_manual_sprt_flag` boolean,
+
+`crpcr_one_annuity_flag` boolean,
+
+`crpcr_sber_doc_dp_code` string,
+
+`crpcr_sber_doc_sk` bigint,
+
+`ctl_loading` bigint,
+
+`ctl_validfrom` timestamp,
+
+`deleted_flag` boolean,
+
+`docum_tran_participation_role_dp_code` string,
+
+`docum_tran_participation_role_sk` bigint,
+
+`escrow_agr_amt` decimal(38,10),
+
+`escrow_agr_depon_dt` date,
+
+`escrow_crncy_dp_code` string,
+
+`escrow_crncy_sk` bigint,
+
+`escrow_disclosure_agr_dp_code` string,
+
+`escrow_disclosure_agr_sk` bigint,
+
+`escrow_docum_base_type_dp_code` string,
+
+`escrow_docum_base_type_sk` bigint,
+
+`escrow_object_commiss_dt` date,
+
+`escrow_payer_cred_agr_dp_code` string,
+
+`escrow_payer_cred_agr_sk` bigint,
+
+`frame_letter_cred_org_agr_dp_code` string,
+
+`frame_letter_cred_org_agr_sk` bigint,
+
+`init_anlt_div_dp_code` string,
+
+`init_anlt_div_sk` bigint,
+
+`init_div_code` string,
+
+`init_expire_dt` date,
+
+`issuing_subj_dp_code` string,
+
+`issuing_subj_sk` bigint,
+
+`letter_cred_coverage_crdt_funds_first_amt` decimal(38,10),
+
+`letter_cred_coverage_crncy_dp_code` string,
+
+`letter_cred_coverage_crncy_sk` bigint,
+
+`letter_cred_coverage_flag` boolean,
+
+`letter_cred_coverage_own_funds_first_amt` decimal(38,10),
+
+`letter_cred_org_financing_dt` date,
+
+`letter_cred_source_coverage_type_dp_code` string,
+
+`letter_cred_source_coverage_type_sk` bigint,
+
+`letter_cred_type_dp_code` string,
+
+`letter_cred_type_sk` bigint,
+
+`num` string,
+
+`open_dt` date,
+
+`sid` string,
+
+`sign_dt` date,
+
+`type_code` string)
+
+ROW FORMAT SERDE
+
+'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+
+STORED AS INPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+
+OUTPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+
+LOCATION
+
+'hdfs://hdfsgw/arnsdpfess2__USL_TRADEFIN_NDL_UVDO_XS_SNP-USL_TRADEFIN_NDL_UVDO_XS_SNP-AGR/data/usl/tradefin_ndl_uvdo_xs/snp/agr'
+
+TBLPROPERTIES (
+
+'bucketing_version'='2',
+
+'spark.sql.statistics.numRows'='4139249',
+
+'spark.sql.statistics.totalSize'='222920656',
+
+'transient_lastDdlTime'='1765597611')
+
+ 
+
+createtab_stmt
+
+CREATE EXTERNAL TABLE `prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_proc`(
+
+`advising_subj_dp_code` string,
+
+`advising_subj_sk` bigint,
+
+`agr_dp_code` string,
+
+`agr_sk` bigint,
+
+`confirming_subj_dp_code` string,
+
+`confirming_subj_sk` bigint,
+
+`crpcr_corp_cgc_agr_status_dp_code` string,
+
+`crpcr_corp_cgc_agr_status_sk` bigint,
+
+`ctl_loading` bigint,
+
+`ctl_validfrom` timestamp,
+
+`docum_tran_seller_subj_dp_code` string,
+
+`docum_tran_seller_subj_sk` bigint,
+
+`end_dt` date,
+
+`letter_cred_ind_buyer_subj_dp_code` string,
+
+`letter_cred_ind_buyer_subj_sk` bigint,
+
+`letter_cred_org_buyer_subj_dp_code` string,
+
+`letter_cred_org_buyer_subj_sk` bigint,
+
+`letter_cred_org_max_delay_bank_dt` date,
+
+`letter_cred_org_max_delay_seller_dt` date,
+
+`letter_cred_revocable_flag` boolean,
+
+`nominated_subj_dp_code` string,
+
+`nominated_subj_sk` bigint,
+
+`reimbursing_subj_dp_code` string,
+
+`reimbursing_subj_sk` bigint,
+
+`srv_anlt_div_dp_code` string,
+
+`srv_anlt_div_sk` bigint,
+
+`srv_div_code` string,
+
+`start_dt` date,
+
+`type_code` string)
+
+PARTITIONED BY (
+
+`p1month` string)
+
+ROW FORMAT SERDE
+
+'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+
+STORED AS INPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+
+OUTPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+
+LOCATION
+
+'hdfs://hdfsgw/arnsdpfess2__USL_TRADEFIN_NDL_UVDO_XS_SNP-USL_TRADEFIN_NDL_UVDO_XS_SNP-AGR_PROC/data/usl/tradefin_ndl_uvdo_xs/snp/agr_proc'
+
+TBLPROPERTIES (
+
+'bucketing_version'='2',
+
+'spark.sql.partitionProvider'='catalog',
+
+'transient_lastDdlTime'='1765598066')
+
+createtab_stmt
+
+CREATE EXTERNAL TABLE `prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_fin`(
+
+`agr_dp_code` string,
+
+`agr_sk` bigint,
+
+`crpcr_line_crncy_dp_code` string,
+
+`crpcr_line_crncy_sk` bigint,
+
+`crpcr_line_limit_amt` decimal(38,10),
+
+`crpcr_one_amt` decimal(38,10),
+
+`crpcr_one_crncy_dp_code` string,
+
+`crpcr_one_crncy_sk` bigint,
+
+`ctl_loading` bigint,
+
+`ctl_validfrom` timestamp,
+
+`docum_tran_amt` decimal(38,10),
+
+`docum_tran_crncy_dp_code` string,
+
+`docum_tran_crncy_sk` bigint,
+
+`end_dt` date,
+
+`frame_letter_cred_org_crncy_dp_code` string,
+
+`frame_letter_cred_org_crncy_sk` bigint,
+
+`frame_letter_cred_org_lim_amt` decimal(38,10),
+
+`letter_cred_coverage_amt` decimal(38,10),
+
+`start_dt` date,
+
+`type_code` string)
+
+PARTITIONED BY (
+
+`p1month` string)
+
+ROW FORMAT SERDE
+
+'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+
+STORED AS INPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+
+OUTPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+
+LOCATION
+
+'hdfs://hdfsgw/arnsdpfess2__USL_TRADEFIN_NDL_UVDO_XS_SNP-USL_TRADEFIN_NDL_UVDO_XS_SNP-AGR_FIN/data/usl/tradefin_ndl_uvdo_xs/snp/agr_fin'
+
+TBLPROPERTIES (
+
+'bucketing_version'='2',
+
+'spark.sql.partitionProvider'='catalog',
+
+'transient_lastDdlTime'='1765598020')
+
+ 
+
+createtab_stmt
+
+CREATE EXTERNAL TABLE `prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.letter_cred_org_plan_payment`(
+
+`ctl_loading` bigint,
+
+`ctl_validfrom` timestamp,
+
+`deleted_flag` boolean,
+
+`letter_cred_org_plan_payment_amt` decimal(38,10),
+
+`letter_cred_org_plan_payment_crncy_dp_code` string,
+
+`letter_cred_org_plan_payment_crncy_sk` bigint,
+
+`letter_cred_org_plan_payment_delay_bank_dt` date,
+
+`letter_cred_org_plan_payment_delay_seller_dt` date,
+
+`letter_cred_org_plan_payment_dp_code` string,
+
+`letter_cred_org_plan_payment_dt` date,
+
+`letter_cred_org_plan_payment_sk` bigint,
+
+`plan_payment_agr_dp_code` string,
+
+`plan_payment_agr_sk` bigint,
+
+`sid` string)
+
+ROW FORMAT SERDE
+
+'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+
+STORED AS INPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+
+OUTPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+
+LOCATION
+
+'hdfs://hdfsgw/arnsdpfess2__USL_TRADEFIN_NDL_UVDO_XS_SNP-USL_TRADEFIN_NDL_UVDO_XS_SNP-LETTER_CRED_ORG_PLAN_PAYMENT/data/usl/tradefin_ndl_uvdo_xs/snp/letter_cred_org_plan_payment'
+
+TBLPROPERTIES (
+
+'bucketing_version'='2',
+
+'spark.sql.statistics.numRows'='3960',
+
+'spark.sql.statistics.totalSize'='126307',
+
+'transient_lastDdlTime'='1765597953')
+
+ 
+
+createtab_stmt
+
+CREATE EXTERNAL TABLE `prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.letter_cred_type`(
+
+`ctl_loading` bigint,
+
+`ctl_validfrom` timestamp,
+
+`deleted_flag` boolean,
+
+`letter_cred_type_code` string,
+
+`letter_cred_type_dp_code` string,
+
+`letter_cred_type_name` string,
+
+`letter_cred_type_sk` bigint,
+
+`sid` string)
+
+ROW FORMAT SERDE
+
+'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+
+STORED AS INPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+
+OUTPUTFORMAT
+
+'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+
+LOCATION
+
+'hdfs://hdfsgw/arnsdpfess2__USL_TRADEFIN_NDL_UVDO_XS_SNP-USL_TRADEFIN_NDL_UVDO_XS_SNP-LETTER_CRED_TYPE/data/usl/tradefin_ndl_uvdo_xs/snp/letter_cred_type'
+
+TBLPROPERTIES (
+
+'bucketing_version'='2',
+
+'spark.sql.statistics.numRows'='14',
+
+'spark.sql.statistics.totalSize'='3246',
+
+'transient_lastDdlTime'='1765596987')
+
+ 
+
+ 
+
