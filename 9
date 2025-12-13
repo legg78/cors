@@ -1,1 +1,49 @@
-br3
+import org.apache.spark.sql.{SparkSession, DataFrame}
+import org.apache.spark.sql.functions._
+import org.apache.spark.broadcast.Broadcast
+
+val spark = SparkSession.builder
+  .appName("Final Client Report Optimized Minimal Cache")
+  .getOrCreate()
+
+// === Исходные таблицы ===
+val agrDF = spark.table("agr")
+val agrFinDF = spark.table("agr_fin").filter(col("end_dt") === "9999-12-31")
+val clientsDF = spark.table("subj_h").select(col("subj_sk"), col("inn_num"))
+val optnDF = spark.table("optn")
+val reportDatesDF = spark.table("report_dates")
+
+// Broadcast для маленьких справочников
+val clientsBr: Broadcast[DataFrame] = broadcast(clientsDF)
+val reportDatesBr: Broadcast[DataFrame] = broadcast(reportDatesDF)
+
+// === Базовая витрина ===
+val baseDF = agrDF
+  .join(agrFinDF, Seq("agr_sk"), "left") // agr_fin может быть не слишком большой, кэш не нужен
+  .join(clientsBr.withColumnRenamed("inn_num", "buyer_inn"), agrDF("letter_cred_org_buyer_subj_sk") === clientsBr("subj_sk"), "left")
+  .join(clientsBr.withColumnRenamed("inn_num", "seller_inn"), agrDF("docum_tran_seller_subj_sk") === clientsBr("subj_sk"), "left")
+  .crossJoin(reportDatesBr)
+  .join(optnDF, Seq("agr_sk"), "left")
+
+// === Приведение сумм к RUB ===
+val finalDF = baseDF
+  .withColumn("deferral_amt", coalesce(col("deferral_amt"), lit(0)))
+  .withColumn("return_amt", coalesce(col("return_amt"), lit(0)))
+  .withColumn("cover_amt", coalesce(col("cover_amt"), lit(0)))
+  .withColumn("pay_amt", coalesce(col("pay_amt"), lit(0)))
+  .withColumn("defer_fee_amt", coalesce(col("defer_fee_amt"), lit(0)))
+  .withColumn("interest_amt", coalesce(col("interest_amt"), lit(0)))
+  .withColumn("deferral_rub", when(col("op_digital_code") === 643, col("deferral_amt"))
+    .otherwise(col("deferral_amt") * coalesce(col("op_rub_rate_amt"), lit(1.0)) / coalesce(col("op_qty_rub_cnt"), lit(1))))
+  .withColumn("return_rub", when(col("op_digital_code") === 643, col("return_amt"))
+    .otherwise(col("return_amt") * coalesce(col("op_rub_rate_amt"), lit(1.0)) / coalesce(col("op_qty_rub_cnt"), lit(1))))
+  .withColumn("cover_rub", when(col("op_digital_code") === 643, col("cover_amt"))
+    .otherwise(col("cover_amt") * coalesce(col("op_rub_rate_amt"), lit(1.0)) / coalesce(col("op_qty_rub_cnt"), lit(1))))
+  .withColumn("pay_rub", when(col("op_digital_code") === 643, col("pay_amt"))
+    .otherwise(col("pay_amt") * coalesce(col("op_rub_rate_amt"), lit(1.0)) / coalesce(col("op_qty_rub_cnt"), lit(1))))
+  .withColumn("is_migration", col("is_migration_flag") === 1)
+
+// === Сохраняем финальный отчет ===
+finalDF.write
+  .mode("overwrite")
+  .parquet("/path/to/final_client_report_min_cache")
