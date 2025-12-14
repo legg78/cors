@@ -1,0 +1,142 @@
+// === ПОДГОТОВКА ===
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
+
+val spark = SparkSession.builder()
+  .appName("Raw Trade Finance Data Export with Aggregates")
+  .enableHiveSupport()
+  .getOrCreate()
+
+// === СХЕМЫ ===
+val schemaTradeFin = "usl_tradefin_ndl_uvdo_snp"
+val schemaSubj = "usl_subj_org_idl_snp"
+val schemaRates = "usl_gmrates_idl_snp"
+val schemaCrncy = "usl_rdm_idl_spark_snp"
+
+// === ПАРАМЕТРЫ ОТЧЕТА ===
+val dateStart = "2020-01-01"
+val dateEnd = "2025-11-01"
+
+// ===============================
+// 1️⃣ Клиенты
+val subjList = spark.table(s"$schemaTradeFin.subj_h")
+  .select($"subj_sk", $"subj_dp_code", $"inn_num".alias("inn"))
+  .distinct()
+
+// ===============================
+// 2️⃣ Сделки и фин. данные
+val agrFin = spark.table(s"$schemaTradeFin.agr")
+  .join(spark.table(s"$schemaTradeFin.agr_fin"), Seq("agr_sk"))
+  .filter($"open_dt" < dateEnd && (col("close_dt").isNull || col("close_dt") > dateStart))
+  .select(
+    $"agr_sk",
+    $"num",
+    $"docum_tran_crncy_sk",
+    $"docum_tran_amt",
+    $"letter_cred_coverage_flag",
+    $"letter_cred_source_coverage_type_sk",
+    $"open_dt",
+    $"close_dt"
+  )
+
+// ===============================
+// 3️⃣ Операции по сделкам
+val operations = spark.table(s"$schemaTradeFin.optn")
+  .join(spark.table(s"$schemaTradeFin.toptn"), Seq("toptn_sk"), "left")
+  .filter($"optn_dttm" >= dateStart && $"optn_dttm" <= dateEnd)
+  .select(
+    $"agr_sk",
+    $"optn_dttm",
+    $"type_code",
+    $"sum_opt_amt",
+    $"crncy_sk",
+    $"crncy_dp_code",
+    $"group_code"
+  )
+
+// ===============================
+// 4️⃣ Агрегированные операции по сделке и валюте
+val opsAgg = operations
+  .groupBy($"agr_sk", $"crncy_sk")
+  .agg(
+    sum(when($"group_code" === "PayProc" && $"type_code" === "Operation", $"sum_opt_amt").otherwise(0)).alias("pay_amt"),
+    sum(when($"group_code".isin("DefPayFee","DefPayFeeGS","PayCredit","PayCredit5") && $"type_code" === "Commission", $"sum_opt_amt").otherwise(0)).alias("defer_fee"),
+    sum(when($"group_code" === "BankPay" && $"type_code" === "Operation", $"sum_opt_amt").otherwise(0)).alias("bank_pay"),
+    sum(when($"group_code" === "BankReturn" && $"type_code" === "Operation", $"sum_opt_amt").otherwise(0)).alias("bank_return"),
+    sum(when($"group_code" === "Cover" && $"type_code" === "Operation", $"sum_opt_amt").otherwise(0)).alias("cover"),
+    sum(when($"group_code".isin("PrePay","Prepay","Pay","Expire","ReturnCover") && $"type_code" === "Operation", $"sum_opt_amt").otherwise(0)).alias("pay_raw")
+  )
+
+// ===============================
+// 5️⃣ Buyer/Seller ИНН
+val agrProc = spark.table(s"$schemaTradeFin.agr_proc")
+  .select(
+    $"agr_sk",
+    $"letter_cred_org_buyer_subj_sk".alias("buyer_sk"),
+    $"docum_tran_seller_subj_sk".alias("seller_sk")
+  )
+
+val buyerSellerInn = agrProc
+  .join(subjList.withColumnRenamed("subj_sk", "buyer_sk").withColumnRenamed("inn", "buyer_inn"), Seq("buyer_sk"), "left")
+  .join(subjList.withColumnRenamed("subj_sk", "seller_sk").withColumnRenamed("inn", "seller_inn"), Seq("seller_sk"), "left")
+  .select($"agr_sk", $"buyer_inn", $"seller_inn")
+
+// ===============================
+// 6️⃣ Условия аккредитива
+val agrCond = spark.table(s"$schemaTradeFin.agr_cond")
+  .filter($"end_dt" === lit("9999-12-31"))
+  .select($"agr_sk", $"mat_dt".alias("expire_dt"))
+
+val coverageType = spark.table(s"$schemaTradeFin.letter_cred_source_coverage_type")
+  .select($"letter_cred_source_coverage_type_sk", $"letter_cred_source_coverage_type_name")
+
+// ===============================
+// 7️⃣ Валюты и курсы
+val crncy = spark.table(s"$schemaCrncy.crncy")
+  .select($"crncy_sk", $"iso_code", $"digital_code")
+
+val cbrRates = spark.table(s"$schemaRates.cbr_exchange_rate")
+  .join(spark.table(s"$schemaRates.cbr_exchange_rate_dt"), Seq("cbr_exchange_rate_sk"))
+  .filter($"point_dt" === lit(dateEnd))
+  .select($"crncy_sk", $"rub_rate_amt", $"qty_rub_cnt")
+
+// ===============================
+// 8️⃣ Собираем сырую витрину с временной агрегацией
+val rawDataAgg = agrFin
+  .join(opsAgg, Seq("agr_sk"), "left")
+  .join(buyerSellerInn, Seq("agr_sk"), "left")
+  .join(agrCond, Seq("agr_sk"), "left")
+  .join(coverageType, Seq("letter_cred_source_coverage_type_sk"), "left")
+  .join(crncy.withColumnRenamed("crncy_sk", "deal_crncy_sk").withColumnRenamed("iso_code", "deal_crncy_iso"), $"docum_tran_crncy_sk" === $"deal_crncy_sk", "left")
+  .join(crncy.withColumnRenamed("crncy_sk", "optn_crncy_sk").withColumnRenamed("iso_code", "optn_crncy_iso"), $"crncy_sk" === $"optn_crncy_sk", "left")
+  .join(cbrRates.withColumnRenamed("crncy_sk", "optn_crncy_sk_rate"), $"crncy_sk" === $"optn_crncy_sk_rate", "left")
+  .select(
+    $"agr_sk",
+    $"num",
+    $"docum_tran_amt",
+    $"deal_crncy_iso",
+    $"open_dt",
+    $"close_dt",
+    $"expire_dt",
+    $"letter_cred_coverage_flag",
+    $"letter_cred_source_coverage_type_name",
+    $"buyer_inn",
+    $"seller_inn",
+    $"pay_amt",
+    $"defer_fee",
+    $"bank_pay",
+    $"bank_return",
+    $"cover",
+    $"pay_raw",
+    $"rub_rate_amt",
+    $"qty_rub_cnt"
+  )
+
+// ===============================
+// 9️⃣ Выгрузка в Hive
+rawDataAgg.write
+  .mode("overwrite")
+  .saveAsTable("tradefin_raw_vitrina_agg")
+
+println("✅ Сырая витрина с агрегированными операциями успешно подготовлена!")
