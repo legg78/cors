@@ -1,108 +1,315 @@
-скрипт переписал import org.apache.spark.sql.{SparkSession, DataFrame}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
+import java.time.LocalDate
 
-val spark = SparkSession.builder()
-  .appName("LettersCreditRawDataOptimized")
-  .enableHiveSupport()
-  .getOrCreate()
+object CreditReportVitrine {
 
-// === Схемы исходных данных ===
-val schemaTradefin = "usl_tradefin_ndl_uvdo_snp"
-val schemaSubj    = "usl_subj_org_idl_snp"
-val schemaRdm     = "usl_rdm_idl_spark_snp"
-val schemaGmrates = "usl_gmrates_idl_snp"
+  def main(args: Array[String]): Unit = {
 
-// === Параметры периода отчета ===
-val dateStart = "2020-01-01"
-val dateEnd   = "2025-11-01"
+    val spark = SparkSession.builder()
+      .appName("CreditReportVitrine")
+      .getOrCreate()
 
-// === Субъекты ===
-val subjTradefin = spark.table(s"$schemaTradefin.subj_h")
-val subjOrg      = spark.table(s"$schemaSubj.subj_h")
+    import spark.implicits._
 
-val subjList = subjTradefin.select("subj_dp_code", "subj_sk", "inn_num")
-  .union(subjOrg.select("subj_dp_code", "subj_sk", "inn_num"))
-  .persist()  // небольшая таблица, можно кэшировать
+    // ======================
+    // Параметры отчёта
+    // ======================
+    val reportDate = LocalDate.now.minusDays(1)
 
-// === Сделки / аккредитивы ===
-val agrProc = spark.table(s"$schemaTradefin.agr_proc")
-val agr     = spark.table(s"$schemaTradefin.agr")
-val lct     = spark.table(s"$schemaTradefin.letter_cred_type")
-val agrFin  = spark.table(s"$schemaTradefin.agr_fin")
+    // ======================
+    // 1. Договор
+    // ======================
+    val agrDF =
+      spark.table("prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr")
+        .filter(col("letter_cred_type_sk").isNotNull)
+        .select(
+          col("agr_sk"),
+          col("sid").as("agr_sid"),
+          col("num").as("agr_num"),
+          col("open_dt"),
+          col("close_dt"),
+          col("letter_cred_coverage_flag").as("coverage_flag"),
+          col("letter_cred_source_coverage_type_sk").as("coverage_type_sk")
+        )
 
-val agrListPre = agrProc
-  .join(agr, Seq("agr_sk"))
-  .join(lct, Seq("letter_cred_type_sk"))
-  .filter($"lct.sid".isin("1","2","10") || $"agr.type_code".isin("ind","ind_draft"))
-  .select($"agr_sk").distinct()
+    // ======================
+    // 2. Финансы договора
+    // ======================
+    val agrFinDF =
+      spark.table("prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_fin")
+        .filter(col("end_dt") === "9999-12-31")
+        .select(
+          col("agr_sk"),
+          col("docum_tran_amt"),
+          col("docum_tran_crncy_sk").as("crncy_sk")
+        )
 
-// === Плановые платежи ===
-val planPayment = spark.table(s"$schemaTradefin.letter_cred_org_plan_payment")
-  .join(agrListPre, $"plan_payment_agr_sk" === $"agr_sk")
-  .filter($"letter_cred_org_plan_payment_amt".isNotNull && $"letter_cred_org_plan_payment_amt" > 0)
-  .filter($"letter_cred_org_plan_payment_dt" >= dateStart)
-  .select($"plan_payment_agr_sk".alias("agr_sk"))
-  .distinct()
+    // ======================
+    // 3. Контрагенты
+    // ======================
+    val agrProcDF =
+      spark.table("prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_proc")
+        .select(
+          col("agr_sk"),
+          col("letter_cred_org_buyer_subj_sk").as("buyer_subj_sk"),
+          col("docum_tran_seller_subj_sk").as("seller_subj_sk")
+        )
 
-// === Финальный список аккредитивов ===
-val agrListFin = agrListPre
-  .join(agr, Seq("agr_sk"))
-  .join(agrFin.filter($"end_dt" === "9999-12-31"), Seq("agr_sk"))
-  .join(planPayment, Seq("agr_sk"), "left")
-  .filter($"open_dt" < dateEnd && ($"close_dt".isNull || $"plan_sk".isNotNull || ($"close_dt" > dateStart && $"close_dt" < dateEnd)))
-  .select($"agr_sk", $"sid", $"num", $"docum_tran_amt", $"docum_tran_crncy_sk", $"letter_cred_coverage_flag",
-          $"letter_cred_source_coverage_type_sk", $"open_dt", $"close_dt")
-  .persist() // часто используемый DF, кэширование оправдано
+    // ======================
+    // 4. Клиенты (ИНН) — оба источника
+    // ======================
+    val clientsDF =
+      spark.table("prx_usl_subj_org_idl_snp.subj_h")
+        .filter(col("end_dt") === "9999-12-31")
+        .select(col("subj_sk"), col("inn_num"))
+        .union(
+          spark.table("prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.subj_h")
+            .filter(col("end_dt") === "9999-12-31")
+            .select(col("subj_sk"), col("inn_num"))
+        )
+        .distinct()
 
-// === Операции по аккредитивам ===
-val operations = spark.table(s"$schemaTradefin.optn")
-  .join(spark.table(s"$schemaTradefin.toptn"), Seq("toptn_sk"), "left")
-  .join(agrListFin.select("agr_sk"), Seq("agr_sk"))
-  .filter($"optn_dttm" >= dateStart && $"optn_dttm" <= dateEnd)
-  .select($"agr_sk", $"optn_dttm", $"type_code", $"sum_opt_amt", $"crncy_dp_code", $"crncy_sk", $"group_code")
-  .persist()  // кэшируем, так как будет много join'ов
+    // ======================
+    // 5. Финальная витрина
+    // ======================
+    val finalDF =
+      agrDF
+        .join(agrFinDF, Seq("agr_sk"), "left")
+        .join(agrProcDF, Seq("agr_sk"), "left")
 
-// === Курсы валют ===
-val crncy      = spark.table(s"$schemaRdm.crncy")
-val cbrRate    = spark.table(s"$schemaGmrates.cbr_exchange_rate")
-val cbrRateDt  = spark.table(s"$schemaGmrates.cbr_exchange_rate_dt").filter($"point_dt" === current_date)
+        // ИНН покупателя
+        .join(
+          clientsDF.withColumnRenamed("subj_sk", "buyer_subj_sk"),
+          Seq("buyer_subj_sk"),
+          "left"
+        )
+        .withColumnRenamed("inn_num", "buyer_inn")
 
-// === Объединение всех сырых данных ===
-val rawData = agrListFin
-  .join(operations, Seq("agr_sk"), "left")
-  .join(crncy, Seq("crncy_sk"), "left")
-  .join(cbrRate, Seq("crncy_sk"), "left")
-  .join(cbrRateDt, Seq("cbr_exchange_rate_sk"), "left")
-  .join(subjList.select($"subj_sk".alias("buyer_sk"), $"inn_num".alias("buyer_inn")),
-        $"buyer_sk" === $"agr_proc.letter_cred_org_buyer_subj_sk", "left")
-  .join(subjList.select($"subj_sk".alias("seller_sk"), $"inn_num".alias("seller_inn")),
-        $"seller_sk" === $"agr_proc.docum_tran_seller_subj_sk", "left")
-  .select(
-    $"agr_sk",
-    $"num",
-    $"docum_tran_amt",
-    $"docum_tran_crncy_sk",
-    $"open_dt",
-    $"close_dt",
-    $"letter_cred_coverage_flag",
-    $"letter_cred_source_coverage_type_sk",
-    $"optn_dttm",
-    $"type_code",
-    $"sum_opt_amt",
-    $"group_code",
-    $"crncy_dp_code",
-    $"iso_code".alias("currency_iso"),
-    $"rub_rate_amt",
-    $"qty_rub_cnt",
-    $"buyer_inn",
-    $"seller_inn"
+        // ИНН продавца
+        .join(
+          clientsDF.withColumnRenamed("subj_sk", "seller_subj_sk"),
+          Seq("seller_subj_sk"),
+          "left"
+        )
+        .withColumnRenamed("inn_num", "seller_inn")
+
+        // FX слой (ШАГ 3)
+        .join(agrWithBalanceRubDF, Seq("agr_sk"), "left")
+
+        // Операции (ШАГ 2)
+        .join(operationsAggDF, Seq("agr_sk"), "left")
+
+        .select(
+          lit(reportDate).as("report_date"),
+          col("agr_sk"),
+          col("agr_sid"),
+          col("agr_num"),
+          col("open_dt"),
+          col("close_dt"),
+          col("coverage_flag"),
+          col("coverage_type_sk"),
+          col("docum_tran_amt"),
+          col("balance_rub"),
+          col("buyer_inn"),
+          col("seller_inn"),
+          col("sum_percent_amt"),
+          col("sum_defer_fee_amt"),
+          col("sum_bank_pay_amt"),
+          col("sum_bank_return_amt"),
+          col("sum_pay_amt"),
+          col("sum_cover_amt"),
+          col("is_migration_flag").cast("boolean")
+        )
+
+    // ======================
+    // Запись витрины
+    // ======================
+    finalDF.write
+      .mode("overwrite")
+      .format("parquet")
+      .save("/data/credit_report_vitrine")
+
+    spark.stop()
+  }
+}
+
+-------------------------
+
+1️⃣ subj_h (clientsDF)
+Что есть
+
+2 таблицы
+
+обе partitioned by p1month
+
+используется для:
+
+buyer INN
+
+seller INN
+
+⚠️ Реальный риск
+
+union + distinct
+
+чтение всех партиций, если нет фильтра по p1month
+
+join по subj_sk → shuffle
+
+✅ ОБЯЗАТЕЛЬНО сделать
+1. Фильтр end_dt = '9999-12-31' ДО union
+
+(чтобы уменьшить данные)
+
+2. Persist
+val clientsDF =
+  subj1
+    .filter($"end_dt" === "9999-12-31")
+    .select("subj_sk", "subj_dp_code", "inn_num")
+    .union(
+      subj2
+        .filter($"end_dt" === "9999-12-31")
+        .select("subj_sk", "subj_dp_code", "inn_num")
+    )
+    .distinct()
+    .persist(StorageLevel.MEMORY_AND_DISK)
+
+
+📌 Это самое оправданное кэширование во всём пайплайне.
+
+2️⃣ agr (4.1 млн строк, без партиций)
+Что это значит
+
+full scan каждый запуск
+
+он будет driving table для всех join’ов
+
+❌ Что НЕ делать
+
+❌ cache agr
+
+❌ temp table
+
+✅ Что МОЖНО (и нужно)
+Максимально рано сузить agr
+val agrBaseDF =
+  agrDF
+    .filter($"type_code".isin("ind", "ind_draft"))
+    .filter($"open_dt" < dateEnd)
+
+
+Любое условие, которое логически допустимо — ДО join’ов.
+
+3️⃣ agr_proc + фильтр по buyer / seller
+Хорошая новость
+
+partitioned (p1month)
+
+join по agr_sk
+
+⚠️ Важно
+
+INN-фильтр НЕ через subj_h → agr, а:
+
+agr_proc
+  .filter(
+    $"letter_cred_org_buyer_subj_sk".isin(buyerSubjSk) ||
+    $"docum_tran_seller_subj_sk".isin(sellerSubjSk)
   )
 
-// === Сохраняем как Hive-таблицу для последующего расчета и выгрузки в Postgres ===
-rawData.write.mode("overwrite").saveAsTable("dw_letters_credit_raw_optimized")
 
-// === Освобождение кэша после сохранения ===
-subjList.unpersist()
-agrListFin.unpersist()
-operations.unpersist()
+То есть:
+
+сначала clientsDF
+
+потом semi-join в agr_proc
+
+и только потом join с agr
+
+Это сильно уменьшает agr.
+
+4️⃣ letter_cred_org_plan_payment (3960 строк)
+💎 Идеальный dimension
+
+3960 строк
+
+используется как existence-check
+
+join по agr_sk
+
+✅ ОБЯЗАТЕЛЬНО
+import org.apache.spark.sql.functions.broadcast
+
+val planPaymentDF = broadcast(
+  spark.table("letter_cred_org_plan_payment")
+    .filter($"letter_cred_org_plan_payment_amt" > 0)
+    .filter($"letter_cred_org_plan_payment_dt" >= dateStart)
+)
+
+
+📈 Это уберёт shuffle полностью.
+
+5️⃣ letter_cred_type (14 строк)
+Даже обсуждать нечего 😄
+val lctDF = broadcast(
+  spark.table("letter_cred_type")
+)
+
+6️⃣ agr_fin
+ОК
+
+partitioned
+
+SCD
+
+join по agr_sk
+
+ВАЖНО
+
+Фильтр SCD:
+
+.filter(current_date.between($"start_dt", $"end_dt"))
+
+
+до join, иначе будет explode строк.
+
+7️⃣ Нужно ли кэшировать agrBaseDF?
+Ответ: ❓ зависит
+Сценарий	Рекомендация
+1 финальный join	❌ не кэшить
+agr используется 2+ раз	✅ persist
+агрегации + повторные join	✅
+
+Если ты делаешь ОДНУ витрину → write — не надо.
+
+🧠 Рекомендуемая стратегия (коротко)
+✅ Обязательно
+
+clientsDF.persist(MEMORY_AND_DISK)
+
+broadcast(letter_cred_type)
+
+broadcast(plan_payment)
+
+ранние фильтры SCD (end_dt, start_dt)
+
+⚠️ Опционально
+
+persist agrBaseDF, если используется >1 раза
+
+❌ Не делать
+
+кэшить agr
+
+temp tables
+
+broadcast больших fact’ов
+
+🏁 Итоговая оценка с учётом DDL
+Критерий	Оценка
+Архитектура	9 / 10
+Join-стратегия	9 / 10
+Работа с SCD	8.5 / 10
+Использование кэша	9 / 10 (после правок)
+Общая производительность	9.3 / 10
