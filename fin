@@ -1,315 +1,755 @@
-import org.apache.spark.sql.SparkSession
+
+
+// --- 1. Инициализация SparkSession ---
+
+val spark = SparkSession.builder()
+
+  .appName("LetterCredDatamart")
+
+  .config("spark.sql.catalogImplementation", "hive")
+
+  .enableHiveSupport()
+
+  .getOrCreate()
+
+ 
+
 import org.apache.spark.sql.functions._
-import java.time.LocalDate
 
-object CreditReportVitrine {
+import org.apache.spark.sql.Column
 
-  def main(args: Array[String]): Unit = {
+import spark.implicits._
 
-    val spark = SparkSession.builder()
-      .appName("CreditReportVitrine")
-      .getOrCreate()
+import org.apache.spark.sql.types.{DataTypes, DecimalType}
+
+import java.sql.{Date, Timestamp}
+
+// --- 2. Эмуляция getParam и констант ---
+
+def getParam(key: String, default: String): String = {
+
+  Map(
+
+    "saveRaw" -> "true",
+
+    "sourceSchemasPrefix" -> "usl",
+
+    "startDate" -> "2000-01-01",
+
+    "endDate" -> "2999-12-31"
+
+  ).getOrElse(key, default)
+
+}
+
+val SavePartitions = Some(200)
+
+// --- 3. Добавление withCtlColumn (упрощённая реализация) ---
+
+implicit class WithCtlColumn(df: org.apache.spark.sql.DataFrame) {
+
+  def withCtlColumn(): org.apache.spark.sql.DataFrame = {
+
+    df.withColumn("ctl_validfrom", current_date().cast(DataTypes.StringType))
+
+      .withColumn("ctl_loading", unix_timestamp(current_timestamp()).cast(DataTypes.LongType))
+
+  }
+
+}
+
+// --- 4. Определение LetterCredRaw и LetterCredRawView ---
+
+case class LetterCredRaw(
+
+  agr_sk: Option[String],
+
+agr_sid: Option[String],
+
+  agr_num: Option[String],
+
+  docum_tran_amt: Option[String],
+
+  docum_tran_crncy_sk: Option[String],
+
+  deal_currency_iso: Option[String],
+
+  deal_digital_code: Option[String],
+
+  letter_cred_coverage_flag: Option[String],
+
+  letter_cred_source_coverage_type_sk: Option[String],
+
+  letter_cred_source_coverage_type_name: Option[String],
+
+  open_dt: Option[String],
+
+  close_dt: Option[String],
+
+  mat_dt: Option[String],
+
+  optn_dttm: Option[String],
+
+  type_code: Option[String],
+
+  sum_opt_amt: Option[String],
+
+  group_code: Option[String],
+
+  op_currency_iso: Option[String],
+
+  op_digital_code: Option[String],
+
+  rub_rate_amt: Option[String],
+
+  qty_rub_cnt: Option[String],
+
+  buyer_inn: Option[String],
+
+  seller_inn: Option[String],
+
+  tech_hash: Option[String],
+
+  ctl_validfrom: Option[String],
+
+  ctl_loading: Option[Long]
+
+)
+
+object LetterCredRawView {
+
+  def gen(implicit spark: SparkSession): org.apache.spark.sql.Dataset[LetterCredRaw] = {
 
     import spark.implicits._
 
-    // ======================
-    // Параметры отчёта
-    // ======================
-    val reportDate = LocalDate.now.minusDays(1)
+    val saveRaw = getParam("saveRaw", "false").toBoolean
 
-    // ======================
-    // 1. Договор
-    // ======================
-    val agrDF =
-      spark.table("prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr")
-        .filter(col("letter_cred_type_sk").isNotNull)
-        .select(
-          col("agr_sk"),
-          col("sid").as("agr_sid"),
-          col("num").as("agr_num"),
-          col("open_dt"),
-          col("close_dt"),
-          col("letter_cred_coverage_flag").as("coverage_flag"),
-          col("letter_cred_source_coverage_type_sk").as("coverage_type_sk")
-        )
+    val sourceSchemasPrefix = getParam("sourceSchemasPrefix", "usl")
 
-    // ======================
-    // 2. Финансы договора
-    // ======================
-    val agrFinDF =
-      spark.table("prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_fin")
-        .filter(col("end_dt") === "9999-12-31")
-        .select(
-          col("agr_sk"),
-          col("docum_tran_amt"),
-          col("docum_tran_crncy_sk").as("crncy_sk")
-        )
+    val startDate = getParam("startDate", "2000-01-01")
 
-    // ======================
-    // 3. Контрагенты
-    // ======================
-    val agrProcDF =
-      spark.table("prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.agr_proc")
-        .select(
-          col("agr_sk"),
-          col("letter_cred_org_buyer_subj_sk").as("buyer_subj_sk"),
-          col("docum_tran_seller_subj_sk").as("seller_subj_sk")
-        )
+    val endDate = getParam("endDate", "2999-12-31")
 
-    // ======================
-    // 4. Клиенты (ИНН) — оба источника
-    // ======================
-    val clientsDF =
-      spark.table("prx_usl_subj_org_idl_snp.subj_h")
-        .filter(col("end_dt") === "9999-12-31")
-        .select(col("subj_sk"), col("inn_num"))
-        .union(
-          spark.table("prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp.subj_h")
-            .filter(col("end_dt") === "9999-12-31")
-            .select(col("subj_sk"), col("inn_num"))
-        )
-        .distinct()
+    if (!saveRaw) return spark.emptyDataset[LetterCredRaw]
 
-    // ======================
-    // 5. Финальная витрина
-    // ======================
-    val finalDF =
-      agrDF
-        .join(agrFinDF, Seq("agr_sk"), "left")
-        .join(agrProcDF, Seq("agr_sk"), "left")
+val schemaTradefin  = "prx_usl_tradefin_ndl_uvdo_xs_snp_usl_tradefin_ndl_uvdo_xs_snp"
 
-        // ИНН покупателя
-        .join(
-          clientsDF.withColumnRenamed("subj_sk", "buyer_subj_sk"),
-          Seq("buyer_subj_sk"),
-          "left"
-        )
-        .withColumnRenamed("inn_num", "buyer_inn")
+val schemaGmrates  = "prx_bulyga_usl_gmrates_idl_snp_1_usl_gmrates_idl_snp"
 
-        // ИНН продавца
-        .join(
-          clientsDF.withColumnRenamed("subj_sk", "seller_subj_sk"),
-          Seq("seller_subj_sk"),
-          "left"
-        )
-        .withColumnRenamed("inn_num", "seller_inn")
+val schemaRdm  = "prx_ryzhikov_unsi_v1_usl_rdm_idl_spark_snp"
 
-        // FX слой (ШАГ 3)
-        .join(agrWithBalanceRubDF, Seq("agr_sk"), "left")
+val schemaSubj  = "prx_usl_subj_org_idl_snp_subj_h_usl_subj_org_idl_snp"     
 
-        // Операции (ШАГ 2)
-        .join(operationsAggDF, Seq("agr_sk"), "left")
+      
 
-        .select(
-          lit(reportDate).as("report_date"),
-          col("agr_sk"),
-          col("agr_sid"),
-          col("agr_num"),
-          col("open_dt"),
-          col("close_dt"),
-          col("coverage_flag"),
-          col("coverage_type_sk"),
-          col("docum_tran_amt"),
-          col("balance_rub"),
-          col("buyer_inn"),
-          col("seller_inn"),
-          col("sum_percent_amt"),
-          col("sum_defer_fee_amt"),
-          col("sum_bank_pay_amt"),
-          col("sum_bank_return_amt"),
-          col("sum_pay_amt"),
-          col("sum_cover_amt"),
-          col("is_migration_flag").cast("boolean")
-        )
+      
 
-    // ======================
-    // Запись витрины
-    // ======================
-    finalDF.write
-      .mode("overwrite")
-      .format("parquet")
-      .save("/data/credit_report_vitrine")
+ 
 
-    spark.stop()
+    val subjTrdFn = spark.table(s"$schemaTradefin.subj_h").filter($"p1month" === "999912").select($"subj_sk", $"inn_num")
+
+    val subjSubj = spark.table(s"$schemaSubj.subj_h").filter($"p100year" === "9999").select($"subj_sk", $"inn_num")
+
+    val subjList = subjTrdFn.union(subjSubj).distinct()
+
+    val agr = spark.table(s"$schemaTradefin.agr")//.filter($"end_dt" === "9999-12-31")
+
+    val agrFin = spark.table(s"$schemaTradefin.agr_fin").filter($"end_dt" === "9999-12-31")
+
+    val agrProc = spark.table(s"$schemaTradefin.agr_proc").select($"agr_sk", $"letter_cred_org_buyer_subj_sk", $"docum_tran_seller_subj_sk")
+
+    val letterCredType = spark.table(s"$schemaTradefin.letter_cred_type").filter($"sid".isin("1", "2", "10"))
+
+ 
+
+    val base = agr
+
+      .join(letterCredType.as("lct"), $"agr.letter_cred_type_sk" === $"lct.letter_cred_type_sk")
+
+      .join(agrFin, Seq("agr_sk"))
+
+      .join(agrProc, Seq("agr_sk"))
+
+      .filter($"lct.sid".isin("1", "2", "10") || $"agr.type_code".isin("ind", "ind_draft"))
+
+      .filter($"open_dt" < endDate && ($"close_dt".isNull || $"close_dt" > startDate))
+
+    val validPlanPayments = spark.table(s"$schemaTradefin.letter_cred_org_plan_payment")
+
+      .filter($"letter_cred_org_plan_payment_amt".isNotNull && $"letter_cred_org_plan_payment_amt" > 0)
+
+      .filter($"letter_cred_org_plan_payment_dt" >= startDate)
+
+      .select($"plan_payment_agr_sk".alias("agr_sk"))
+
+      .distinct()
+
+    val agrListFin = base
+
+      .join(validPlanPayments, Seq("agr_sk"), "leftsemi")
+
+      .union(base.filter($"close_dt".isNull))
+
+      .select(
+
+        $"agr_sk", $"lct.sid".alias("agr_sid"), $"num".alias("agr_num"),
+
+        $"docum_tran_amt", $"docum_tran_crncy_sk", $"letter_cred_coverage_flag",
+
+        $"letter_cred_source_coverage_type_sk", $"open_dt", $"close_dt",
+
+        $"letter_cred_org_buyer_subj_sk", $"docum_tran_seller_subj_sk"
+
+      )
+
+      .distinct()
+
+    val agrCond = spark.table(s"$schemaTradefin.agr_cond").filter($"end_dt" === "9999-12-31").select($"agr_sk", $"mat_dt")
+
+    val coverageType = spark.table(s"$schemaTradefin.letter_cred_source_coverage_type")
+
+      .select($"letter_cred_source_coverage_type_sk", $"letter_cred_source_coverage_type_name")
+
+    val crncy = spark.table(s"$schemaRdm.crncy").select($"crncy_sk", $"iso_code", $"digital_code")
+
+    val toptn = spark.table(s"$schemaTradefin.toptn").select($"toptn_sk", $"group_code")
+
+    val optn = spark.table(s"$schemaTradefin.optn")
+
+      .join(toptn, Seq("toptn_sk"))
+
+      .filter($"optn_dttm" >= startDate && $"optn_dttm" <= endDate)
+
+      .select($"agr_sk", $"optn_dttm", $"type_code", $"sum_opt_amt", $"crncy_sk", $"group_code")
+
+    val cbrRate = spark.table(s"$schemaGmrates.cbr_exchange_rate").select($"crncy_sk", $"cbr_exchange_rate_sk")
+
+    val cbrRateDt = spark.table(s"$schemaGmrates.cbr_exchange_rate_dt")
+
+      .filter($"point_dt" === current_date())
+
+      .select($"cbr_exchange_rate_sk", $"rub_rate_amt", $"qty_rub_cnt")
+
+    val result = agrListFin
+
+      .join(agrCond, Seq("agr_sk"), "left")
+
+      .join(coverageType, Seq("letter_cred_source_coverage_type_sk"), "left")
+
+      .join(optn, Seq("agr_sk"), "left")
+
+      .join(crncy.as("crncy_deal"), $"docum_tran_crncy_sk" === $"crncy_deal.crncy_sk", "left")
+
+      .join(crncy.as("crncy_op"), $"optn.crncy_sk" === $"crncy_op.crncy_sk", "left")  // l_uvdo_xs_snp.optn.crncy_sk, crncy_deal.crncy_sk, crncy_op.crncy_sk.
+
+      .join(cbrRate.as("cbrRate"), $"optn.crncy_sk" === $"cbrRate.crncy_sk", "left")
+
+      .join(cbrRateDt.as("cbrRateDt"), $"cbrRate.cbr_exchange_rate_sk" === $"cbrRateDt.cbr_exchange_rate_sk", "left")
+
+      .join(subjList.as("buyer"), $"letter_cred_org_buyer_subj_sk" === $"buyer.subj_sk", "left")
+
+      .join(subjList.as("seller"), $"docum_tran_seller_subj_sk" === $"seller.subj_sk", "left")
+
+      .select(
+
+        $"agr_sk".cast(DataTypes.StringType),
+
+        $"agr_sid".cast(DataTypes.StringType),
+
+        $"agr_num".cast(DataTypes.StringType),
+
+        $"docum_tran_crncy_sk".cast(DataTypes.StringType),
+
+        round($"docum_tran_amt", 2).cast(DataTypes.StringType).as("docum_tran_amt"),
+
+        $"crncy_deal.iso_code".cast(DataTypes.StringType).as("deal_currency_iso"),
+
+        $"crncy_deal.digital_code".cast(DataTypes.StringType).as("deal_digital_code"),
+
+        $"letter_cred_coverage_flag".cast(DataTypes.StringType),
+
+        $"letter_cred_source_coverage_type_sk".cast(DataTypes.StringType),
+
+        $"letter_cred_source_coverage_type_name".cast(DataTypes.StringType),
+
+        date_format($"open_dt", "yyyy-MM-dd").cast(DataTypes.StringType).as("open_dt"),
+
+        date_format($"close_dt", "yyyy-MM-dd").cast(DataTypes.StringType).as("close_dt"),
+
+        date_format($"mat_dt", "yyyy-MM-dd").cast(DataTypes.StringType).as("mat_dt"),
+
+        date_format($"optn_dttm", "yyyy-MM-dd HH:mm:ss").cast(DataTypes.StringType).as("optn_dttm"),
+
+        $"type_code".cast(DataTypes.StringType),
+
+        round($"sum_opt_amt", 2).cast(DataTypes.StringType).as("sum_opt_amt"),
+
+        $"group_code".cast(DataTypes.StringType),
+
+        $"crncy_op.iso_code".cast(DataTypes.StringType).as("op_currency_iso"),
+
+        $"crncy_op.digital_code".cast(DataTypes.StringType).as("op_digital_code"),
+
+        $"cbrRateDt.rub_rate_amt".cast(DataTypes.StringType),
+
+        $"cbrRateDt.qty_rub_cnt".cast(DataTypes.StringType),
+
+        $"buyer.inn_num".cast(DataTypes.StringType).as("buyer_inn"),
+
+        $"seller.inn_num".cast(DataTypes.StringType).as("seller_inn")
+
+      )
+
+      .withColumn("tech_hash",
+
+        md5(concat_ws("||",
+
+          coalesce($"agr_sk", lit("")),
+
+          coalesce($"agr_num", lit("")),
+
+          coalesce($"optn_dttm", lit(""))
+
+        )).substr(1, 2000)
+
+      )
+
+      .withCtlColumn()
+
+    result.as[LetterCredRaw]
+
   }
+
 }
 
--------------------------
+// --- 5. Создание stg.letter_cred_raw ---
 
-1️⃣ subj_h (clientsDF)
-Что есть
+val rawDF = LetterCredRawView.gen(spark)
 
-2 таблицы
+rawDF.write.mode("overwrite").saveAsTable("custom_cib_pkaptdul_stg.letter_cred_raw")
 
-обе partitioned by p1month
+println("✅ Таблица custom_cib_pkaptdul_stg.letter_cred_raw создана!")
 
-используется для:
+// --- 6. Определение LetterCredAgg и LetterCredAggView ---
 
-buyer INN
+case class LetterCredAgg(
 
-seller INN
+  sid_accr: Option[String],
 
-⚠️ Реальный риск
+  applicant_inn: Option[String],
 
-union + distinct
+  applicant_kpp: Option[String],
 
-чтение всех партиций, если нет фильтра по p1month
+  applicant_kio: Option[String],
 
-join по subj_sk → shuffle
+  applicant_ucpid: Option[String],
 
-✅ ОБЯЗАТЕЛЬНО сделать
-1. Фильтр end_dt = '9999-12-31' ДО union
+  benefitiary_inn: Option[String],
 
-(чтобы уменьшить данные)
+  benefitiary_kpp: Option[String],
 
-2. Persist
-val clientsDF =
-  subj1
-    .filter($"end_dt" === "9999-12-31")
-    .select("subj_sk", "subj_dp_code", "inn_num")
-    .union(
-      subj2
-        .filter($"end_dt" === "9999-12-31")
-        .select("subj_sk", "subj_dp_code", "inn_num")
-    )
-    .distinct()
-    .persist(StorageLevel.MEMORY_AND_DISK)
+  benefitiary_kio: Option[String],
 
+  benefitiary_ucpid: Option[String],
 
-📌 Это самое оправданное кэширование во всём пайплайне.
+  num_accr: Option[String],
 
-2️⃣ agr (4.1 млн строк, без партиций)
-Что это значит
+  amount_doc: Option[String],
 
-full scan каждый запуск
+  currency_doc: Option[String],
 
-он будет driving table для всех join’ов
+  open_dt: Option[String],
 
-❌ Что НЕ делать
+  close_dt: Option[String],
 
-❌ cache agr
+  mat_dt: Option[String],
 
-❌ temp table
+  coverage_flag: Option[Boolean],
 
-✅ Что МОЖНО (и нужно)
-Максимально рано сузить agr
-val agrBaseDF =
-  agrDF
-    .filter($"type_code".isin("ind", "ind_draft"))
-    .filter($"open_dt" < dateEnd)
+  coverage_type: Option[String],
 
+  balance_cur_end_per_dt: Option[String],
 
-Любое условие, которое логически допустимо — ДО join’ов.
+  balance_rub_end_per_dt: Option[String],
 
-3️⃣ agr_proc + фильтр по buyer / seller
-Хорошая новость
+  npa_amount_rep_dt: Option[String],
 
-partitioned (p1month)
+  npa_amount_rep_dt_rur: Option[String],
 
-join по agr_sk
+  npa_amount_rep_dt_cur: Option[String],
 
-⚠️ Важно
+  pa_amount_rep_dt: Option[String],
 
-INN-фильтр НЕ через subj_h → agr, а:
+  non_reimbursed_funds_cur: Option[String],
 
-agr_proc
-  .filter(
-    $"letter_cred_org_buyer_subj_sk".isin(buyerSubjSk) ||
-    $"docum_tran_seller_subj_sk".isin(sellerSubjSk)
-  )
+  non_reimbursed_funds_rub: Option[String],
 
+  nr_rate: Option[String],
 
-То есть:
+  nv_rate: Option[String],
 
-сначала clientsDF
+  defer_amount: Option[String],
 
-потом semi-join в agr_proc
+  currency_fee: Option[String],
 
-и только потом join с agr
+  interest_amount: Option[String],
 
-Это сильно уменьшает agr.
+  currency_interest: Option[String],
 
-4️⃣ letter_cred_org_plan_payment (3960 строк)
-💎 Идеальный dimension
+  is_migrated: Option[Boolean],
 
-3960 строк
+  start_dt: Option[String],
 
-используется как existence-check
+  end_dt: Option[String],
 
-join по agr_sk
+  ctl_loading: Option[Long]
 
-✅ ОБЯЗАТЕЛЬНО
-import org.apache.spark.sql.functions.broadcast
-
-val planPaymentDF = broadcast(
-  spark.table("letter_cred_org_plan_payment")
-    .filter($"letter_cred_org_plan_payment_amt" > 0)
-    .filter($"letter_cred_org_plan_payment_dt" >= dateStart)
 )
 
+object LetterCredAggView {
 
-📈 Это уберёт shuffle полностью.
+  def gen(implicit spark: SparkSession): org.apache.spark.sql.Dataset[LetterCredAgg] = {
 
-5️⃣ letter_cred_type (14 строк)
-Даже обсуждать нечего 😄
-val lctDF = broadcast(
-  spark.table("letter_cred_type")
-)
+    import org.apache.spark.sql.functions._     
 
-6️⃣ agr_fin
-ОК
+    import spark.implicits._
 
-partitioned
+ 
 
-SCD
+ 
 
-join по agr_sk
+    val startDate = getParam("startDate", "2000-01-01")
 
-ВАЖНО
+    val endDate = getParam("endDate", "2999-12-31")
 
-Фильтр SCD:
+    val rawDf = spark.table("custom_cib_pkaptdul_stg.letter_cred_raw")
 
-.filter(current_date.between($"start_dt", $"end_dt"))
+      .filter($"ctl_loading".isNotNull)
 
+      .withColumn("docum_tran_amt", $"docum_tran_amt".cast(DecimalType(38, 2)))
 
-до join, иначе будет explode строк.
+      .withColumn("sum_opt_amt", $"sum_opt_amt".cast(DecimalType(38, 2)))
 
-7️⃣ Нужно ли кэшировать agrBaseDF?
-Ответ: ❓ зависит
-Сценарий	Рекомендация
-1 финальный join	❌ не кэшить
-agr используется 2+ раз	✅ persist
-агрегации + повторные join	✅
+      .withColumn("rub_rate_amt", $"rub_rate_amt".cast(DecimalType(38, 6)))
 
-Если ты делаешь ОДНУ витрину → write — не надо.
+      .withColumn("qty_rub_cnt", $"qty_rub_cnt".cast(DecimalType(38, 6)))
 
-🧠 Рекомендуемая стратегия (коротко)
-✅ Обязательно
+    val safeRawDf = rawDf.withColumn("qty_rub_cnt", when($"qty_rub_cnt" === 0 || $"qty_rub_cnt".isNull, 1.0).otherwise($"qty_rub_cnt"))
 
-clientsDF.persist(MEMORY_AND_DISK)
+    def toRub(amount: Column, digitalCode: Column, rateAmt: Column, qtyCnt: Column): Column = {
 
-broadcast(letter_cred_type)
+      when(digitalCode === "643", amount)
 
-broadcast(plan_payment)
+        .when(digitalCode =!= "643" && rateAmt.isNotNull && qtyCnt > 0, (amount * rateAmt) / qtyCnt)
 
-ранние фильтры SCD (end_dt, start_dt)
+        .otherwise(lit(0))
 
-⚠️ Опционально
+    }
 
-persist agrBaseDF, если используется >1 раза
+    val aDF = safeRawDf.filter($"group_code" === "PayProc" && $"type_code" === "Operation")
 
-❌ Не делать
+      .groupBy($"agr_sk", $"agr_num", $"op_currency_iso")
 
-кэшить agr
+      .agg(round(sum($"sum_opt_amt"), 2).alias("interest_amount"), max($"op_currency_iso").alias("currency_interest"))
 
-temp tables
+      .withColumnRenamed("agr_num","num_accr")
 
-broadcast больших fact’ов
+    val bDF = safeRawDf.filter($"group_code".isin("DefPayFee", "DefPayFeeGS", "PayCredit", "PayCredit5") && $"type_code" === "Commission")
 
-🏁 Итоговая оценка с учётом DDL
-Критерий	Оценка
-Архитектура	9 / 10
-Join-стратегия	9 / 10
-Работа с SCD	8.5 / 10
-Использование кэша	9 / 10 (после правок)
-Общая производительность	9.3 / 10
+      .groupBy($"agr_sk", $"agr_num", $"op_currency_iso")
+
+      .agg(round(sum($"sum_opt_amt"), 2).alias("defer_amount"), max($"op_currency_iso").alias("currency_fee"))
+
+.withColumnRenamed("agr_num","num_accr")
+
+    val dDF = safeRawDf.filter($"group_code" === "BankPay" && $"type_code" === "Operation")
+
+      .groupBy($"agr_sk", $"agr_num", $"op_digital_code", $"rub_rate_amt", $"qty_rub_cnt")
+
+      .agg(round(sum($"sum_opt_amt"), 2).alias("nSumBankPay_raw"), sum(toRub($"sum_opt_amt", $"op_digital_code", $"rub_rate_amt", $"qty_rub_cnt")).alias("nSumBankPayRub_raw"))
+
+      .select($"agr_sk", $"agr_num", $"nSumBankPay_raw", $"nSumBankPayRub_raw")
+
+.withColumnRenamed("agr_num","num_accr")
+
+    val fDF = safeRawDf.filter($"group_code" === "BankReturn" && $"type_code" === "Operation")
+
+      .groupBy($"agr_sk", $"agr_num", $"op_digital_code", $"rub_rate_amt", $"qty_rub_cnt")
+
+      .agg(round(sum($"sum_opt_amt"), 2).alias("nSumBankReturn_raw"), sum(toRub($"sum_opt_amt", $"op_digital_code", $"rub_rate_amt", $"qty_rub_cnt")).alias("nSumBankReturnRub_raw"))
+
+      .select($"agr_sk", $"agr_num", $"nSumBankReturn_raw", $"nSumBankReturnRub_raw")
+
+      .withColumnRenamed("agr_num","num_accr")
+
+  /*  val dealDigitalCodeDF = safeRawDf
+
+      .select($"agr_sk", $"agr_num", $"deal_digital_code".as("deal_digital_code_lookup")).distinct()*/
+
+    val eDF = safeRawDf.filter($"group_code".isin("PrePay", "Prepay", "Pay", "Expire") && $"type_code" === "Operation")
+
+     // .join(deal_digital_code_lookup, Seq("agr_sk", "agr_num"), "inner")
+
+      .withColumn("nSumPay_raw",
+
+        when($"op_digital_code" === $"deal_digital_code", $"sum_opt_amt")
+
+          .when($"op_digital_code" =!= "643" && $"deal_digital_code" === "643", ($"sum_opt_amt" * $"rub_rate_amt") / $"qty_rub_cnt")
+
+          .when($"op_digital_code" === "643" && $"deal_digital_code" =!= "643", ($"sum_opt_amt" * $"qty_rub_cnt") / $"rub_rate_amt")
+
+          .when($"op_digital_code" =!= "643" && $"deal_digital_code" =!= "643", ($"sum_opt_amt" * $"rub_rate_amt" * $"qty_rub_cnt") / ($"qty_rub_cnt" * $"rub_rate_amt"))
+
+          .otherwise(lit(0))
+
+      )
+
+      .groupBy($"agr_sk", $"agr_num")
+
+      .agg(round(sum($"nSumPay_raw"), 2).alias("nSumPay"), sum(toRub($"sum_opt_amt", $"op_digital_code", $"rub_rate_amt", $"qty_rub_cnt")).alias("nSumPayRub"))
+
+      .withColumnRenamed("agr_num","num_accr")
+
+    val ecDF = safeRawDf.filter($"group_code".isin("PrePay", "Prepay", "Pay", "ReturnCover") && $"type_code" === "Operation")
+
+   //   .join(safeRawDf.select($"agr_sk", $"agr_num", $"deal_digital_code").distinct(), Seq("agr_sk", "agr_num"), "inner")
+
+      .withColumn("nSumPay_raw",
+
+        when(($"op_digital_code" === $"deal_digital_code") || ($"op_digital_code" === "643" && $"deal_digital_code" === "643"), $"sum_opt_amt")
+
+          .when($"op_digital_code" =!= "643" && $"deal_digital_code" === "643", ($"sum_opt_amt" * $"rub_rate_amt") / $"qty_rub_cnt")
+
+          .when($"op_digital_code" === "643" && $"deal_digital_code" =!= "643", ($"sum_opt_amt" * $"qty_rub_cnt") / $"rub_rate_amt")
+
+         .when($"op_digital_code" =!= "643" && $"deal_digital_code" =!= "643", ($"sum_opt_amt" * $"rub_rate_amt" * $"qty_rub_cnt") / ($"qty_rub_cnt" * $"rub_rate_amt"))
+
+          .otherwise(lit(0))
+
+      )
+
+      .groupBy($"agr_sk", $"agr_num")
+
+      .agg(round(sum($"nSumPay_raw"), 2).alias("nSumPayEC"), sum(toRub($"sum_opt_amt", $"op_digital_code", $"rub_rate_amt", $"qty_rub_cnt")).alias("nSumPayRubEC"))
+
+      .withColumnRenamed("agr_num","num_accr")
+
+    val gDF = safeRawDf.filter($"group_code" === "Cover" && $"type_code" === "Operation")
+
+  //    .join(safeRawDf.select($"agr_sk", $"agr_num", $"deal_digital_code").distinct(), Seq("agr_sk", "agr_num"), "inner")
+
+      .withColumn("nSumCover_raw",
+
+        when(($"op_digital_code" === $"deal_digital_code") || ($"op_digital_code" === "643" && $"deal_digital_code" === "643"), $"sum_opt_amt")
+
+          .when($"op_digital_code" =!= "643" && $"deal_digital_code" === "643", ($"sum_opt_amt" * $"rub_rate_amt") / $"qty_rub_cnt")
+
+          .when($"op_digital_code" === "643" && $"deal_digital_code" =!= "643", ($"sum_opt_amt" * $"qty_rub_cnt") / $"rub_rate_amt")
+
+          .when($"op_digital_code" =!= "643" && $"deal_digital_code" =!= "643", ($"sum_opt_amt" * $"rub_rate_amt" * $"qty_rub_cnt") / ($"qty_rub_cnt" * $"rub_rate_amt"))
+
+          .otherwise(lit(0))
+
+      )
+
+      .groupBy($"agr_sk", $"agr_num")
+
+      .agg(round(sum($"nSumCover_raw"), 2).alias("pa_amount_rep_dt"), sum(toRub($"sum_opt_amt", $"op_digital_code", $"rub_rate_amt", $"qty_rub_cnt")).alias("pa_amount_rep_dt_rub"))
+
+.withColumnRenamed("agr_num","num_accr")
+
+    val mDF = safeRawDf.filter($"group_code" === "Migration").groupBy($"agr_sk", $"agr_num").agg(lit(true).alias("is_migrated"))
+
+.withColumnRenamed("agr_num","num_accr")
+
+    val baseAgg = safeRawDf.select(
+
+        $"agr_sk",
+
+        $"agr_sid".as("sid_accr"),
+
+        $"agr_num".as("num_accr"),
+
+        $"docum_tran_amt",
+
+        $"deal_currency_iso".as("currency_doc"),
+
+        $"deal_digital_code",
+
+        $"open_dt",
+
+        $"close_dt",
+
+        $"mat_dt",
+
+        when($"letter_cred_coverage_flag".isin("true", "1", "Y", "y"), true).otherwise(false).as("coverage_flag"),
+
+        $"letter_cred_source_coverage_type_name".as("coverage_type"),
+
+        $"buyer_inn".as("applicant_inn"),
+
+        $"seller_inn".as("benefitiary_inn"),
+
+        coalesce($"rub_rate_amt", lit(1.0)).cast(DecimalType(38, 6)).as("rub_rate_amt"),
+
+        coalesce($"qty_rub_cnt", lit(1.0)).cast(DecimalType(38, 6)).as("qty_rub_cnt")
+
+      ).distinct()
+
+    val result = baseAgg
+
+      .join(aDF, Seq("agr_sk", "num_accr"), "left")
+
+      .join(bDF, Seq("agr_sk", "num_accr"), "left")
+
+      .join(dDF, Seq("agr_sk", "num_accr"), "left")
+
+      .join(fDF, Seq("agr_sk", "num_accr"), "left")
+
+      .join(eDF, Seq("agr_sk", "num_accr"), "left")
+
+      .join(ecDF, Seq("agr_sk", "num_accr"), "left")
+
+      .join(gDF, Seq("agr_sk", "num_accr"), "left")
+
+      .join(mDF, Seq("agr_sk", "num_accr"), "left")
+
+      .na.fill(0)
+
+    val finalResult = result
+
+      .withColumn("balance_cur_end_per_dt",
+
+        round(
+
+          when($"coverage_flag" === false, $"docum_tran_amt" - coalesce($"nSumPay", lit(0)))
+
+            .when($"coverage_flag" === true, coalesce($"pa_amount_rep_dt", lit(0)) - coalesce($"nSumPayEC", lit(0)))
+
+            .otherwise(lit(0)) + (coalesce($"nSumBankPay_raw", lit(0)) - coalesce($"nSumBankReturn_raw", lit(0))), 2))
+
+      .withColumn("balance_rub_end_per_dt",
+
+        round(
+
+          when($"coverage_flag" === false,
+
+            when($"deal_digital_code" === "643", $"docum_tran_amt" - $"nSumPayRub")
+
+              .otherwise((($"docum_tran_amt" - $"nSumPayRub") * $"rub_rate_amt") / $"qty_rub_cnt")
+
+          )
+
+            .when($"coverage_flag" === true, $"pa_amount_rep_dt_rub" - $"nSumPayRubEC")
+
+            .otherwise(lit(0)) + (coalesce($"nSumBankPayRub_raw", lit(0)) - coalesce($"nSumBankReturnRub_raw", lit(0))), 2))
+
+      .withColumn("npa_amount_rep_dt", $"docum_tran_amt")
+
+      .withColumn("npa_amount_rep_dt_rur", when($"deal_digital_code" === "643", $"docum_tran_amt"))
+
+      .withColumn("npa_amount_rep_dt_cur", when($"deal_digital_code" =!= "643", round(($"docum_tran_amt" * $"rub_rate_amt") / $"qty_rub_cnt", 2)))
+
+      .withColumn("non_reimbursed_funds_cur", $"nSumBankPay_raw" - $"nSumBankReturn_raw")
+
+      .withColumn("non_reimbursed_funds_rub", $"nSumBankPayRub_raw" - $"nSumBankReturnRub_raw")
+
+      .withColumn("nr_rate", $"rub_rate_amt")
+
+      .withColumn("nv_rate", $"qty_rub_cnt")
+
+      .withColumn("start_dt", lit(startDate))
+
+      .withColumn("end_dt", lit(endDate))
+
+    finalResult.select(
+
+      $"sid_accr".cast(DataTypes.StringType),
+
+      $"applicant_inn".cast(DataTypes.StringType),
+
+      lit("": String).as("applicant_kpp"),
+
+      lit("": String).as("applicant_kio"),
+
+      lit("": String).as("applicant_ucpid"),
+
+      $"benefitiary_inn".cast(DataTypes.StringType),
+
+      lit("": String).as("benefitiary_kpp"),
+
+      lit("": String).as("benefitiary_kio"),
+
+      lit("": String).as("benefitiary_ucpid"),
+
+      $"num_accr".cast(DataTypes.StringType),
+
+      $"docum_tran_amt".cast(DataTypes.StringType).as("amount_doc"),
+
+      $"currency_doc".cast(DataTypes.StringType),
+
+      date_format($"open_dt", "yyyy-MM-dd").cast(DataTypes.StringType).as("open_dt"),
+
+      date_format($"close_dt", "yyyy-MM-dd").cast(DataTypes.StringType).as("close_dt"),
+
+      date_format($"mat_dt", "yyyy-MM-dd").cast(DataTypes.StringType).as("mat_dt"),
+
+      $"coverage_flag".cast(DataTypes.BooleanType),
+
+      $"coverage_type".cast(DataTypes.StringType),
+
+      $"balance_cur_end_per_dt".cast(DataTypes.StringType),
+
+      $"balance_rub_end_per_dt".cast(DataTypes.StringType),
+
+      $"npa_amount_rep_dt".cast(DataTypes.StringType),
+
+      $"npa_amount_rep_dt_rur".cast(DataTypes.StringType),
+
+      $"npa_amount_rep_dt_cur".cast(DataTypes.StringType),
+
+      $"pa_amount_rep_dt".cast(DataTypes.StringType),
+
+      $"non_reimbursed_funds_cur".cast(DataTypes.StringType),
+
+      $"non_reimbursed_funds_rub".cast(DataTypes.StringType),
+
+      $"nr_rate".cast(DataTypes.StringType),
+
+      $"nv_rate".cast(DataTypes.StringType),
+
+      $"defer_amount".cast(DataTypes.StringType),
+
+      $"currency_fee".cast(DataTypes.StringType),
+
+      $"interest_amount".cast(DataTypes.StringType),
+
+      $"currency_interest".cast(DataTypes.StringType),
+
+      $"is_migrated".cast(DataTypes.BooleanType),
+
+      $"start_dt".cast(DataTypes.StringType),
+
+      $"end_dt".cast(DataTypes.StringType),
+
+      unix_timestamp(current_timestamp()).cast(DataTypes.LongType).as("ctl_loading")
+
+    ).as[LetterCredAgg]
+
+  }
+
+}
+
+// --- 7. Создание dmt.letter_cred_agg ---
+
+val aggDF = LetterCredAggView.gen(spark)
+
+aggDF.write.mode("overwrite").saveAsTable("custom_cib_pkaptdul.letter_cred_agg")
+
+println("✅ Таблица custom_cib_pkaptdul.letter_cred_agg создана!")
+
+// --- 8. Проверка ---
+
+spark.table("custom_cib_pkaptdul_stg.letter_cred_raw").count()
+
+spark.table("custom_cib_pkaptdul.letter_cred_agg").show(5)
