@@ -1,1 +1,147 @@
-12
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
+
+// ========================
+// 1️⃣ Параметры
+// ========================
+val inn = "7403005526"
+val dateStart = "2020-01-01"
+val dateEnd = "2025-11-01"
+val currentDate = current_date()
+
+// ========================
+// 2️⃣ Клиенты
+// ========================
+val subjTradeDF = spark.table("usl_tradefin_ndl_uvdo_snp.subj_h")
+  .filter(col("inn_num") === inn)
+  .select("subj_dp_code", "subj_sk")
+
+val subjOrgDF = spark.table("usl_subj_org_idl_snp.subj_h")
+  .filter(col("inn_num") === inn)
+  .select("subj_dp_code", "subj_sk")
+
+val subjListDF = subjTradeDF.union(subjOrgDF).distinct()
+
+// ========================
+// 3️⃣ Сделки с фильтрацией и плановыми платежами
+// ========================
+val agrDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr")
+val agrProcDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr_proc")
+val lctDF = spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_type")
+val agrFinDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr_fin")
+
+val planPaymentDF = spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_org_plan_payment")
+  .filter(split(col("sid"), "\\|")(0).isin("VOZMPA4410","VOZMPA"))
+  .filter(coalesce(col("letter_cred_org_plan_payment_amt"), lit(0)) > 0)
+  .filter(col("letter_cred_org_plan_payment_dt") >= lit(dateStart))
+  .select("plan_payment_agr_sk").distinct()
+
+val baseDF = agrDF
+  .join(agrProcDF, Seq("agr_sk"))
+  .join(lctDF, Seq("letter_cred_type_sk"))
+  .join(agrFinDF, Seq("agr_sk"))
+  .filter(
+    (col("sid").isin("1","2","10") || col("type_code").isin("ind","ind_draft")) &&
+    col("end_dt") === "9999-12-31" &&
+    col("open_dt") < lit(dateEnd) &&
+    (
+      col("close_dt").isNull ||
+      (col("close_dt") >= lit(dateStart) && col("close_dt") <= lit(dateEnd)) ||
+      col("agr_sk").isin(planPaymentDF.select("plan_payment_agr_sk").as[Long].collect():_*)
+    )
+  )
+
+// ========================
+// 4️⃣ Операции
+// ========================
+val optnDF = spark.table("usl_tradefin_ndl_uvdo_snp.optn")
+val toptnDF = spark.table("usl_tradefin_ndl_uvdo_snp.toptn")
+
+val opsDF = optnDF
+  .join(toptnDF, Seq("toptn_sk"), "left")
+  .filter(col("optn_dttm").between(lit(dateStart), lit(dateEnd)))
+
+// ========================
+// 5️⃣ Агрегация по группам и валютам
+// ========================
+val opsAggDF = opsDF
+  .groupBy("agr_sk", "docum_tran_crncy_sk")
+  .agg(
+    sum(when(col("group_code") === "Pay", col("sum_opt_amt"))).as("A"),
+    sum(when(col("group_code") === "Cover", col("sum_opt_amt"))).as("B"),
+    sum(when(col("group_code") === "Expire", col("sum_opt_amt"))).as("D"),
+    sum(when(col("group_code") === "ReturnCover", col("sum_opt_amt"))).as("E"),
+    sum(when(col("group_code") === "ExtraCover", col("sum_opt_amt"))).as("EC"),
+    sum(when(col("group_code") === "Deferred", col("sum_opt_amt"))).as("DF"),
+    sum(when(col("group_code") === "BankPay", col("sum_opt_amt"))).as("F"),
+    sum(when(col("group_code") === "BankReturn", col("sum_opt_amt"))).as("FRub"),
+    sum(when(col("group_code") === "Drub", col("sum_opt_amt"))).as("Drub"),
+    sum(when(col("group_code") === "ERub", col("sum_opt_amt"))).as("ERub"),
+    sum(when(col("group_code") === "G", col("sum_opt_amt"))).as("G")
+  )
+
+// ========================
+// 6️⃣ Курсы валют и пересчет в рубли
+// ========================
+val cbrRateDF = spark.table("usl_gmrates_idl_snp.cbr_exchange_rate")
+val cbrRateDtDF = spark.table("usl_gmrates_idl_snp.cbr_exchange_rate_dt")
+
+val opsWithRubDF = opsAggDF
+  .join(cbrRateDF, opsAggDF("docum_tran_crncy_sk") === cbrRateDF("crncy_sk"), "left")
+  .join(cbrRateDtDF, opsAggDF("docum_tran_crncy_sk") === cbrRateDtDF("crncy_sk"), "left")
+  .withColumn("A_RUB", col("A") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("B_RUB", col("B") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("D_RUB", col("D") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("E_RUB", col("E") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("EC_RUB", col("EC") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("DF_RUB", col("DF") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("F_RUB", col("F") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("FRub_RUB", col("FRub") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("Drub_RUB", col("Drub") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("ERub_RUB", col("ERub") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  .withColumn("G_RUB", col("G") * col("rub_rate_amt") / col("qty_rub_cnt"))
+
+// ========================
+// 7️⃣ Финальный DataFrame с расчетными полями
+// ========================
+val finalDF = baseDF
+  .join(opsWithRubDF, Seq("agr_sk"), "left")
+  .join(
+    spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_source_coverage_type"),
+    Seq("letter_cred_source_coverage_type_sk"),
+    "left"
+  )
+  .join(
+    spark.table("usl_tradefin_ndl_uvdo_snp.agr_cond")
+      .filter(col("end_dt") === "9999-12-31")
+      .select("agr_sk", "mat_dt"),
+    Seq("agr_sk"),
+    "left"
+  )
+  .join(crncyDF, col("docum_tran_crncy_sk") === crncyDF("crncy_sk"), "left")
+  .select(
+    col("sid").as("ID аккредитива"),
+    col("num").as("Номер аккредитива"),
+    col("docum_tran_amt").cast("float").as("Сумма аккредитива"),
+    col("iso_code").as("Валюта"),
+    col("open_dt"),
+    col("close_dt"),
+    col("mat_dt"),
+    col("letter_cred_coverage_flag"),
+    col("letter_cred_source_coverage_type_name"),
+    (coalesce(col("B"), lit(0)) - coalesce(col("A"), lit(0))).as("Остаток в валюте"),
+    (coalesce(col("F"), lit(0)) - coalesce(col("FRub"), lit(0))).as("Невозмещенное отвлечение"),
+    col("A_RUB"),
+    col("B_RUB"),
+    col("D_RUB"),
+    col("E_RUB"),
+    col("EC_RUB"),
+    col("DF_RUB"),
+    col("F_RUB"),
+    col("FRub_RUB"),
+    col("Drub_RUB"),
+    col("ERub_RUB"),
+    col("G_RUB")
+  )
+
+finalDF.show(20, false)
