@@ -1,147 +1,2397 @@
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
+привет. есть исходный запрос 
 
-// ========================
-// 1️⃣ Параметры
-// ========================
-val inn = "7403005526"
-val dateStart = "2020-01-01"
-val dateEnd = "2025-11-01"
-val currentDate = current_date()
 
-// ========================
-// 2️⃣ Клиенты
-// ========================
-val subjTradeDF = spark.table("usl_tradefin_ndl_uvdo_snp.subj_h")
-  .filter(col("inn_num") === inn)
-  .select("subj_dp_code", "subj_sk")
+WITH
 
-val subjOrgDF = spark.table("usl_subj_org_idl_snp.subj_h")
-  .filter(col("inn_num") === inn)
-  .select("subj_dp_code", "subj_sk")
+ 
 
-val subjListDF = subjTradeDF.union(subjOrgDF).distinct()
+ 
 
-// ========================
-// 3️⃣ Сделки с фильтрацией и плановыми платежами
-// ========================
-val agrDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr")
-val agrProcDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr_proc")
-val lctDF = spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_type")
-val agrFinDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr_fin")
+-- CTE для ввода периода построения отчета
 
-val planPaymentDF = spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_org_plan_payment")
-  .filter(split(col("sid"), "\\|")(0).isin("VOZMPA4410","VOZMPA"))
-  .filter(coalesce(col("letter_cred_org_plan_payment_amt"), lit(0)) > 0)
-  .filter(col("letter_cred_org_plan_payment_dt") >= lit(dateStart))
-  .select("plan_payment_agr_sk").distinct()
+, date_list as (
 
-val baseDF = agrDF
-  .join(agrProcDF, Seq("agr_sk"))
-  .join(lctDF, Seq("letter_cred_type_sk"))
-  .join(agrFinDF, Seq("agr_sk"))
-  .filter(
-    (col("sid").isin("1","2","10") || col("type_code").isin("ind","ind_draft")) &&
-    col("end_dt") === "9999-12-31" &&
-    col("open_dt") < lit(dateEnd) &&
-    (
-      col("close_dt").isNull ||
-      (col("close_dt") >= lit(dateStart) && col("close_dt") <= lit(dateEnd)) ||
-      col("agr_sk").isin(planPaymentDF.select("plan_payment_agr_sk").as[Long].collect():_*)
-    )
+select '2025-01-01' as date_start, '2025-12-31' as date_end
+
+)
+
+ 
+
+ 
+
+ 
+
+---- CTE для отбора нужных клиентов/сделок/операций
+
+, subj_list_app as (
+
+select distinct
+
+  subj_h.subj_dp_code
+
+  , subj_h.subj_sk
+
+ 
+
+  , subj_h.inn_num                                         as inn
+
+  , subj.sid                                                           as epk_id
+
+  , subj_orgidfn.full_name           as client_name
+
+  , subj_org_kpp.kpp_code          as kpp
+
+from usl_tradefin_ndl_uvdo_snp.subj
+
+left join usl_tradefin_ndl_uvdo_snp.subj_h
+
+                on subj.subj_sk = subj_h.subj_sk
+
+left join usl_tradefin_ndl_uvdo_snp.subj_org_kpp
+
+                on subj.subj_sk = subj_org_kpp.subj_sk
+
+left join usl_tradefin_ndl_uvdo_snp.subj_orgidfn
+
+                on subj.subj_sk = subj_orgidfn.subj_sk
+
+ 
+
+union
+
+select distinct
+
+  subj_h.subj_dp_code
+
+  , subj_h.subj_sk
+
+ 
+
+  , subj_h.inn_num
+
+  , subj.sid
+
+  , subj_orgidfn.full_name
+
+  , subj_org_kpp.kpp_code
+
+from usl_subj_org_idl_snp.subj
+
+left join usl_subj_org_idl_snp.subj_h
+
+                on subj.subj_sk = subj_h.subj_sk
+
+left join usl_subj_org_idl_snp.subj_org_kpp
+
+                on subj.subj_sk = subj_org_kpp.subj_sk
+
+left join usl_subj_org_idl_snp.subj_orgidfn
+
+                on subj.subj_sk = subj_orgidfn.subj_sk
+
+ 
+
+)
+
+ 
+
+, agr_sk_list_pre as (
+
+select distinct
+
+  agr_proc.agr_sk
+
+  , agr_proc.docum_tran_seller_subj_dp_code -- dp_code бенефициара
+
+  , agr_proc.docum_tran_seller_subj_sk                -- sk бенефициара
+
+from usl_tradefin_ndl_uvdo_snp.agr_proc
+
+inner join usl_tradefin_ndl_uvdo_snp.agr
+
+  on agr_proc.agr_sk = agr.agr_sk
+
+inner join usl_tradefin_ndl_uvdo_snp.letter_cred_type lct
+
+  on agr.letter_cred_type_sk = lct.letter_cred_type_sk
+
+where
+
+  (lct.sid in ('1', '2', '10') and agr.type_code in ('org', 'org_draft'))
+
+  and (
+
+    agr_proc.letter_cred_org_buyer_subj_sk in (select subj_sk from subj_list_app)
+
+    or agr_proc.docum_tran_seller_subj_sk in (select subj_sk from subj_list_app)
+
   )
 
-// ========================
-// 4️⃣ Операции
-// ========================
-val optnDF = spark.table("usl_tradefin_ndl_uvdo_snp.optn")
-val toptnDF = spark.table("usl_tradefin_ndl_uvdo_snp.toptn")
+  and agr_proc.end_dt = '9999-12-31'
 
-val opsDF = optnDF
-  .join(toptnDF, Seq("toptn_sk"), "left")
-  .filter(col("optn_dttm").between(lit(dateStart), lit(dateEnd)))
+)
 
-// ========================
-// 5️⃣ Агрегация по группам и валютам
-// ========================
-val opsAggDF = opsDF
-  .groupBy("agr_sk", "docum_tran_crncy_sk")
-  .agg(
-    sum(when(col("group_code") === "Pay", col("sum_opt_amt"))).as("A"),
-    sum(when(col("group_code") === "Cover", col("sum_opt_amt"))).as("B"),
-    sum(when(col("group_code") === "Expire", col("sum_opt_amt"))).as("D"),
-    sum(when(col("group_code") === "ReturnCover", col("sum_opt_amt"))).as("E"),
-    sum(when(col("group_code") === "ExtraCover", col("sum_opt_amt"))).as("EC"),
-    sum(when(col("group_code") === "Deferred", col("sum_opt_amt"))).as("DF"),
-    sum(when(col("group_code") === "BankPay", col("sum_opt_amt"))).as("F"),
-    sum(when(col("group_code") === "BankReturn", col("sum_opt_amt"))).as("FRub"),
-    sum(when(col("group_code") === "Drub", col("sum_opt_amt"))).as("Drub"),
-    sum(when(col("group_code") === "ERub", col("sum_opt_amt"))).as("ERub"),
-    sum(when(col("group_code") === "G", col("sum_opt_amt"))).as("G")
+ 
+
+, subj_list_ben_pre as (
+
+select distinct
+
+  docum_tran_seller_subj_dp_code
+
+  , docum_tran_seller_subj_sk
+
+from agr_sk_list_pre
+
+)
+
+ 
+
+, subj_list_ben as (
+
+select distinct
+
+  subj_h.subj_dp_code
+
+  , subj_h.subj_sk
+
+ 
+
+  , subj_h.inn_num          as inn
+
+  , subj.sid                as epk_id
+
+  , subj_orgidfn.full_name  as client_name
+
+  , subj_org_kpp.kpp_code   as kpp
+
+from subj_list_ben_pre
+
+inner join usl_tradefin_ndl_uvdo_snp.subj
+
+                on subj_list_ben_pre.docum_tran_seller_subj_sk = subj.subj_sk
+
+left join usl_tradefin_ndl_uvdo_snp.subj_h
+
+                on subj.subj_sk = subj_h.subj_sk
+
+left join usl_tradefin_ndl_uvdo_snp.subj_org_kpp
+
+                on subj.subj_sk = subj_org_kpp.subj_sk
+
+left join usl_tradefin_ndl_uvdo_snp.subj_orgidfn
+
+                on subj.subj_sk = subj_orgidfn.subj_sk
+
+where subj_list_ben_pre.docum_tran_seller_subj_dp_code = 'tradefin_ndl_uvdo'
+
+union
+
+select distinct
+
+  subj_h.subj_dp_code
+
+  , subj_h.subj_sk
+
+ 
+
+  , subj_h.inn_num
+
+  , subj.sid
+
+  , subj_orgidfn.full_name
+
+  , subj_org_kpp.kpp_code
+
+from subj_list_ben_pre
+
+inner join usl_subj_org_idl_snp.subj
+
+                on subj_list_ben_pre.docum_tran_seller_subj_sk = subj.subj_sk
+
+left join usl_subj_org_idl_snp.subj_h
+
+                on subj.subj_sk = subj_h.subj_sk
+
+left join usl_subj_org_idl_snp.subj_org_kpp
+
+                on subj.subj_sk = subj_org_kpp.subj_sk
+
+left join usl_subj_org_idl_snp.subj_orgidfn
+
+                on subj.subj_sk = subj_orgidfn.subj_sk
+
+where subj_list_ben_pre.docum_tran_seller_subj_dp_code = 'subj_org_ndl_p_ucpkb'
+
+)
+
+ 
+
+, plan_payment as (
+
+select distinct
+
+  plan.plan_payment_agr_sk as agr_sk
+
+from agr_sk_list_pre
+
+inner join usl_tradefin_ndl_uvdo_snp.letter_cred_org_plan_payment plan
+
+  on agr_sk_list_pre.agr_sk = plan.plan_payment_agr_sk
+
+cross join date_list
+
+where
+
+  split(plan.sid, '\\|')[0] in ('VOZMPA4410', 'VOZMPA')
+
+  and coalesce(plan.letter_cred_org_plan_payment_amt, 0) > 0
+
+  and plan.letter_cred_org_plan_payment_dt >= date_list.date_start
+
+)
+
+ 
+
+, agr_sk_list_fin as (
+
+select distinct
+
+  agr.agr_sk
+
+  , agr.agr_dp_code
+
+  , agr.type_code
+
+  , agr.sid
+
+  , agr.num
+
+  , agr_fin.docum_tran_amt
+
+  , agr_fin.docum_tran_crncy_sk
+
+  , agr.letter_cred_coverage_flag
+
+  , agr.letter_cred_source_coverage_type_sk
+
+  , agr.open_dt
+
+  , agr.close_dt
+
+ 
+
+  , subj_list_app.inn             as app_inn
+
+  , subj_list_ben.inn             as ben_inn
+
+  , subj_list_app.epk_id                                                                as app_epk_id
+
+  , subj_list_ben.epk_id                                                                as ben_epk_id
+
+  , subj_list_app.client_name     as app_name
+
+  , subj_list_ben.client_name                     as ben_name
+
+  , subj_list_app.kpp                                                          as app_kpp
+
+  , subj_list_ben.kpp                                                          as ben_kpp
+
+from agr_sk_list_pre pre
+
+inner join usl_tradefin_ndl_uvdo_snp.agr
+
+  on pre.agr_sk = agr.agr_sk
+
+inner join usl_tradefin_ndl_uvdo_snp.agr_fin
+
+  on agr.agr_sk = agr_fin.agr_sk
+
+inner join usl_tradefin_ndl_uvdo_snp.agr_proc
+
+  on agr.agr_sk = agr_proc.agr_sk
+
+left join subj_list_app
+
+  on agr_proc.letter_cred_org_buyer_subj_sk = subj_list_app.subj_sk
+
+left join subj_list_ben
+
+  on agr_proc.docum_tran_seller_subj_sk = subj_list_ben.subj_sk
+
+left join plan_payment
+
+  on agr.agr_sk = plan_payment.agr_sk
+
+cross join date_list
+
+where
+
+  agr.sign_dt < date_list.date_end
+
+  and (
+
+    agr.close_dt is null
+
+    or plan_payment.agr_sk is not null
+
+    or (agr.close_dt > date_list.date_start and agr.close_dt < date_list.date_end)
+
   )
 
-// ========================
-// 6️⃣ Курсы валют и пересчет в рубли
-// ========================
-val cbrRateDF = spark.table("usl_gmrates_idl_snp.cbr_exchange_rate")
-val cbrRateDtDF = spark.table("usl_gmrates_idl_snp.cbr_exchange_rate_dt")
+  and agr_fin.end_dt = '9999-12-31'
 
-val opsWithRubDF = opsAggDF
-  .join(cbrRateDF, opsAggDF("docum_tran_crncy_sk") === cbrRateDF("crncy_sk"), "left")
-  .join(cbrRateDtDF, opsAggDF("docum_tran_crncy_sk") === cbrRateDtDF("crncy_sk"), "left")
-  .withColumn("A_RUB", col("A") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("B_RUB", col("B") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("D_RUB", col("D") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("E_RUB", col("E") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("EC_RUB", col("EC") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("DF_RUB", col("DF") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("F_RUB", col("F") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("FRub_RUB", col("FRub") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("Drub_RUB", col("Drub") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("ERub_RUB", col("ERub") * col("rub_rate_amt") / col("qty_rub_cnt"))
-  .withColumn("G_RUB", col("G") * col("rub_rate_amt") / col("qty_rub_cnt"))
+  and agr_proc.end_dt = '9999-12-31'
 
-// ========================
-// 7️⃣ Финальный DataFrame с расчетными полями
-// ========================
-val finalDF = baseDF
-  .join(opsWithRubDF, Seq("agr_sk"), "left")
-  .join(
-    spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_source_coverage_type"),
-    Seq("letter_cred_source_coverage_type_sk"),
-    "left"
-  )
-  .join(
-    spark.table("usl_tradefin_ndl_uvdo_snp.agr_cond")
-      .filter(col("end_dt") === "9999-12-31")
-      .select("agr_sk", "mat_dt"),
-    Seq("agr_sk"),
-    "left"
-  )
-  .join(crncyDF, col("docum_tran_crncy_sk") === crncyDF("crncy_sk"), "left")
-  .select(
-    col("sid").as("ID аккредитива"),
-    col("num").as("Номер аккредитива"),
-    col("docum_tran_amt").cast("float").as("Сумма аккредитива"),
-    col("iso_code").as("Валюта"),
-    col("open_dt"),
-    col("close_dt"),
-    col("mat_dt"),
-    col("letter_cred_coverage_flag"),
-    col("letter_cred_source_coverage_type_name"),
-    (coalesce(col("B"), lit(0)) - coalesce(col("A"), lit(0))).as("Остаток в валюте"),
-    (coalesce(col("F"), lit(0)) - coalesce(col("FRub"), lit(0))).as("Невозмещенное отвлечение"),
-    col("A_RUB"),
-    col("B_RUB"),
-    col("D_RUB"),
-    col("E_RUB"),
-    col("EC_RUB"),
-    col("DF_RUB"),
-    col("F_RUB"),
-    col("FRub_RUB"),
-    col("Drub_RUB"),
-    col("ERub_RUB"),
-    col("G_RUB")
-  )
+)
 
-finalDF.show(20, false)
+ 
+
+, operations_list as (
+
+select distinct
+
+  optn.agr_sk
+
+  , optn.optn_dttm
+
+  , optn.type_code
+
+  , optn.sum_opt_amt
+
+  , optn.crncy_dp_code
+
+  , optn.crncy_sk
+
+  , toptn.group_code as group_code
+
+from agr_sk_list_fin
+
+inner join usl_tradefin_ndl_uvdo_snp.optn
+
+  on agr_sk_list_fin.agr_sk = optn.agr_sk
+
+left join usl_tradefin_ndl_uvdo_snp.toptn
+
+  on optn.toptn_sk = toptn.toptn_sk
+
+cross join date_list
+
+where optn.optn_dttm <= date_list.date_end
+
+                and split(optn.optn_sid, '\\|')[0] > 0
+
+)
+
+ 
+
+---- Основные расчетные CTE
+
+, A AS
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , sum(coalesce(optn.sum_opt_amt, 0)) as nSumPercent
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+cross join date_list
+
+where 1 = 1
+
+  and optn.group_code in ('PayProc')
+
+  and optn.type_code = 'Operation'
+
+  and optn.optn_dttm >= date_list.date_start
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, B AS
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , sum(coalesce(optn.sum_opt_amt, 0)) as nSumDeferSB
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+cross join date_list
+
+where 1 = 1
+
+  and optn.group_code in ('DefPayFee', 'DefPayFeeGS', 'PayCredit', 'PayCredit5')
+
+  and optn.type_code = 'Commission'
+
+  and optn.optn_dttm >= date_list.date_start
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, D AS      -- Отвлечение в валюте сделки
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(coalesce(optn.sum_opt_amt, 0)), 2) as nSumBankPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+where 1 = 1
+
+  and optn.group_code in ('BankPay')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, Drub AS     -- Отвлечение в рублях
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when crncy.digital_code = '643' then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        end), 2) as nSumBankPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+where 1 = 1
+
+  and optn.group_code in ('BankPay')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, E AS        -- Платежи в валюте сделки
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when agr.docum_tran_crncy_sk = optn.crncy_sk then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code = '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        when crncy.digital_code = '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt_agr.qty_rub_cnt) / r_dt_agr.rub_rate_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt * r_dt_agr.qty_rub_cnt) / (r_dt.qty_rub_cnt * r_dt_agr.rub_rate_amt)
+
+        end), 2) as nSumPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy crncy_agr
+
+  on agr.docum_tran_crncy_sk = crncy_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r_agr
+
+  on crncy_agr.crncy_sk = r_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt_agr
+
+  on r_agr.cbr_exchange_rate_sk = r_dt_agr.cbr_exchange_rate_sk
+
+  and r_dt_agr.point_dt = current_date
+
+ 
+
+where 1 = 1
+
+  and optn.group_code in ('PrePay', 'Prepay', 'Pay', 'Expire')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, EC AS       -- Платежи в валюте сделки
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when (agr.docum_tran_crncy_sk = optn.crncy_sk) or (crncy.digital_code = '643' and crncy_agr.digital_code = '643') then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code = '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        when crncy.digital_code = '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt_agr.qty_rub_cnt) / r_dt_agr.rub_rate_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt * r_dt_agr.qty_rub_cnt) / (r_dt.qty_rub_cnt * r_dt_agr.rub_rate_amt)
+
+        end), 2) as nSumPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy crncy_agr
+
+  on agr.docum_tran_crncy_sk = crncy_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r_agr
+
+  on crncy_agr.crncy_sk = r_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt_agr
+
+  on r_agr.cbr_exchange_rate_sk = r_dt_agr.cbr_exchange_rate_sk
+
+  and r_dt_agr.point_dt = current_date
+
+ 
+
+where 1 = 1
+
+  and optn.group_code in ('PrePay', 'Prepay', 'Pay', 'ReturnCover')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, ERub AS     -- Платежи в рублях
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when crncy.digital_code = '643' then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        end), 2) as nSumPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+where 1 = 1
+
+  and optn.group_code in ('PrePay', 'Prepay', 'Pay', 'Expire', 'ReturnCover')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, ECRub AS    -- Платежи в валюте сделки
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when crncy.digital_code = '643' then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        end), 2) as nSumPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+where 1 = 1
+
+  and optn.group_code in ('PrePay', 'Prepay', 'Pay', 'ReturnCover')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, F AS        -- Возмещения в валюте досье
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(optn.sum_opt_amt), 2) as nSumBankReturn
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+where 1 = 1
+
+  and optn.group_code in ('BankReturn')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, FRub AS     -- Возмещения в рублях
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when crncy.digital_code = '643' then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        end), 2) as nSumBankReturn
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+where 1 = 1
+
+  and optn.group_code in ('BankReturn')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, DF AS       -- Отвлечение в валюте сделки
+
+(
+
+select
+
+  C.agr_sk
+
+  , case
+
+      when D.crncy_sk = C.docum_tran_crncy_sk then (D.nSumBankPay  - F.nSumBankReturn)
+
+      when crncy.digital_code != '643' and crncy_agr.digital_code = '643' then ((D.nSumBankPay  - F.nSumBankReturn) * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+      when crncy.digital_code = '643' and crncy_agr.digital_code != '643' then ((D.nSumBankPay  - F.nSumBankReturn) * r_dt_agr.qty_rub_cnt) / r_dt_agr.rub_rate_amt
+
+      when crncy.digital_code != '643' and crncy_agr.digital_code != '643' then ((D.nSumBankPay  - F.nSumBankReturn) * r_dt.rub_rate_amt * r_dt_agr.qty_rub_cnt) / (r_dt.qty_rub_cnt * r_dt_agr.rub_rate_amt)
+
+      end as nSum
+
+from agr_sk_list_fin C
+
+inner join D
+
+  on C.agr_sk = D.agr_sk
+
+left join F
+
+  on C.agr_sk = F.agr_sk
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on D.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy crncy_agr
+
+  on C.docum_tran_crncy_sk = crncy_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r_agr
+
+  on crncy_agr.crncy_sk = r_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt_agr
+
+  on r_agr.cbr_exchange_rate_sk = r_dt_agr.cbr_exchange_rate_sk
+
+  and r_dt_agr.point_dt = current_date
+
+)
+
+ 
+
+, DFRub AS    -- Отвлечение в валюте сделки
+
+(
+
+select
+
+  C.agr_sk
+
+  , case
+
+      when crncy.digital_code = '643' then (D.nSumBankPay  - F.nSumBankReturn)
+
+      when crncy.digital_code != '643' then ((D.nSumBankPay  - F.nSumBankReturn) * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+      end as nSum
+
+from agr_sk_list_fin C
+
+inner join D
+
+  on C.agr_sk = D.agr_sk
+
+left join F
+
+  on C.agr_sk = F.agr_sk
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on D.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+)
+
+ 
+
+, G AS        -- Покрытие в валюте досье
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when (agr.docum_tran_crncy_sk = optn.crncy_sk) or (crncy.digital_code = '643' and crncy_agr.digital_code = '643') then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code = '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        when crncy.digital_code = '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt_agr.qty_rub_cnt) / r_dt_agr.rub_rate_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt * r_dt_agr.qty_rub_cnt) / (r_dt.qty_rub_cnt * r_dt_agr.rub_rate_amt)
+
+        end), 2) as nSumCover
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy crncy_agr
+
+  on agr.docum_tran_crncy_sk = crncy_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r_agr
+
+  on crncy_agr.crncy_sk = r_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt_agr
+
+  on r_agr.cbr_exchange_rate_sk = r_dt_agr.cbr_exchange_rate_sk
+
+  and r_dt_agr.point_dt = current_date
+
+where 1 = 1
+
+  and optn.group_code in ('Cover')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, GRub AS     -- Покрытие в рублях
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when crncy.digital_code = '643' then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        end), 2) as nSumCover
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+where 1 = 1
+
+  and optn.group_code in ('Cover')
+
+  and optn.type_code = 'Operation'
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, BRPlan AS   -- Для сделок отбираем максимальную дату операции планового возмещения \ плановой даты погашения досрочного платежа
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , MAX(optn.optn_dttm) AS dDate
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+where 1 = 1
+
+  and optn.group_code in ('Request', 'ReturnSchedule','DeferPayReturn')
+
+group by agr.agr_sk, agr.num
+
+)
+
+ 
+
+, BRFact AS   -- Для сделок отбираем максимальную дату операции планового возмещения
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , MAX(optn.optn_dttm) AS dDate
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+where 1 = 1
+
+  and optn.group_code in ('BankReturn')
+
+group by agr.agr_sk, agr.num
+
+)
+
+ 
+
+, Z AS        -- Платежи в валюте сделки
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when agr.docum_tran_crncy_sk = optn.crncy_sk then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code = '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        when crncy.digital_code = '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt_agr.qty_rub_cnt) / r_dt_agr.rub_rate_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt * r_dt_agr.qty_rub_cnt) / (r_dt.qty_rub_cnt * r_dt_agr.rub_rate_amt)
+
+        end), 2) as nSumPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy crncy_agr
+
+  on agr.docum_tran_crncy_sk = crncy_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r_agr
+
+  on crncy_agr.crncy_sk = r_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt_agr
+
+  on r_agr.cbr_exchange_rate_sk = r_dt_agr.cbr_exchange_rate_sk
+
+  and r_dt_agr.point_dt = current_date
+
+cross join date_list 
+
+  
+
+where 1 = 1
+
+  and optn.group_code in ('PrePay', 'Prepay', 'Pay', 'Expire'/*, 'ReturnCover'*/)
+
+  and optn.type_code = 'Operation'
+
+  and optn.optn_dttm < date_list.date_start
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, ZC AS       -- Платежи в валюте сделки
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when (agr.docum_tran_crncy_sk = optn.crncy_sk) or (crncy.digital_code = '643' and crncy_agr.digital_code = '643') then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code = '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        when crncy.digital_code = '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt_agr.qty_rub_cnt) / r_dt_agr.rub_rate_amt
+
+        when crncy.digital_code != '643' and crncy_agr.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt * r_dt_agr.qty_rub_cnt) / (r_dt.qty_rub_cnt * r_dt_agr.rub_rate_amt)
+
+        end), 2) as nSumPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+ 
+
+left join usl_rdm_idl_spark_snp.crncy crncy_agr
+
+  on agr.docum_tran_crncy_sk = crncy_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r_agr
+
+  on crncy_agr.crncy_sk = r_agr.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt_agr
+
+  on r_agr.cbr_exchange_rate_sk = r_dt_agr.cbr_exchange_rate_sk
+
+  and r_dt_agr.point_dt = current_date
+
+cross join date_list
+
+ 
+
+where 1 = 1
+
+  and optn.group_code in ('PrePay', 'Prepay', 'Pay', 'ReturnCover')
+
+  and optn.type_code = 'Operation'
+
+  and optn.optn_dttm < date_list.date_start
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, ZRub AS     -- Платежи в рублях
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when crncy.digital_code = '643' then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        end), 2) as nSumPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+cross join date_list
+
+where 1 = 1
+
+  and optn.group_code in ('PrePay', 'Prepay', 'Pay', 'Expire', 'ReturnCover')
+
+  and optn.type_code = 'Operation'
+
+  and optn.optn_dttm < date_list.date_start
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+, ZCRub AS    -- Платежи в валюте сделки
+
+(
+
+select
+
+  agr.agr_sk
+
+  , agr.num
+
+  , round(sum(
+
+      case
+
+        when crncy.digital_code = '643' then optn.sum_opt_amt
+
+        when crncy.digital_code != '643' then (optn.sum_opt_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt
+
+        end), 2) as nSumPay
+
+  , optn.crncy_sk
+
+from agr_sk_list_fin agr
+
+inner join operations_list optn
+
+  on agr.agr_sk = optn.agr_sk
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on optn.crncy_sk = crncy.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+cross join date_list
+
+where 1 = 1
+
+  and optn.group_code in ('PrePay', 'Prepay', 'Pay', 'ReturnCover')
+
+  and optn.type_code = 'Operation'
+
+  and optn.optn_dttm < date_list.date_start
+
+group by agr.agr_sk, optn.crncy_sk, agr.num
+
+)
+
+ 
+
+---- MAIN SELECT
+
+select distinct
+
+  C.sid                             as `ID аккредитива в dflike`
+
+  , C.num                           as `(1) Номер аккредитива`
+
+ 
+
+  , app_inn                          AS `ИНН Плательщика`
+
+  , ben_inn                          AS `ИНН Получателя`
+
+  , app_epk_id  AS `EPK_ID Плательщика`
+
+  , ben_epk_id  AS `EPK_ID Получателя`
+
+  , app_name     AS `Наименование Плательщика`
+
+  , ben_name    AS `Наименование Получателя`
+
+  , app_kpp                         AS `КПП Плательщика`
+
+  , ben_kpp                        AS `КПП Получателя`
+
+ 
+
+  , C.agr_dp_code
+
+  , C.type_code
+
+  , C.docum_tran_amt as `(2) Сумма аккредитива (на дату открытия)`
+
+  , crncy.iso_code                  as `(3) Валюта аккредитива`
+
+  , C.open_dt                       as `(4) Дата открытия`
+
+  , C.close_dt                      as `(5) Дата закрытия`
+
+  , agr_cond.mat_dt                 as `(6) Дата истечения (дата погашения обязательств по аккредитиву)`
+
+  , C.letter_cred_coverage_flag     as `Флаг покрытого аккрдитива`
+
+  , lcs.letter_cred_source_coverage_type_name   as `Тип источника покрытия`
+
+  , agr_fin.docum_tran_amt
+
+    -
+
+      case
+
+        when C.letter_cred_coverage_flag = false then coalesce(E.nSumPay, 0)
+
+        when C.letter_cred_coverage_flag = true then coalesce(EC.nSumPay, 0)
+
+      end
+
+    +
+
+      coalesce(DF.nSum, 0)     as `(7) Остаток в валюте аккредитива (на дату окончания периода)`
+
+  , agr_fin.docum_tran_amt     as `Сумма сделки НПА на дату отчета`
+
+  , coalesce(G.nSumCover, 0)   as `Сумма сделки ПА на дату отчета`
+
+  , coalesce(DF.nSum, 0)       as `Невозмещенное отвлечение в валюте сделки`
+
+  , case
+
+        when C.letter_cred_coverage_flag = false then
+
+          case
+
+            when crncy_2.digital_code = '643' then round(agr_fin.docum_tran_amt, 2)
+
+                                                                                              else ((agr_fin.docum_tran_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt)
+
+            end
+
+        when C.letter_cred_coverage_flag = true then coalesce(GRub.nSumCover, 0)
+
+      end 
+
+    -
+
+      case
+
+        when C.letter_cred_coverage_flag = false then coalesce(ERub.nSumPay, 0)
+
+        when C.letter_cred_coverage_flag = true then coalesce(ECRub.nSumPay, 0)
+
+      end
+
+    +
+
+      coalesce(DFRub.nSum, 0)   as `(8) Остаток (на дату окончания периода) (руб.)`
+
+  , case
+
+        when C.letter_cred_coverage_flag = false then
+
+          case
+
+            when crncy_2.digital_code = '643' then round(agr_fin.docum_tran_amt, 2)
+
+                                                                                              else ((agr_fin.docum_tran_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt)
+
+            end
+
+        when C.letter_cred_coverage_flag = true then coalesce(GRub.nSumCover, 0)
+
+      end 
+
+    -
+
+      case
+
+        when C.letter_cred_coverage_flag = false then coalesce(ZRub.nSumPay, 0)
+
+        when C.letter_cred_coverage_flag = true then coalesce(ZCRub.nSumPay, 0)
+
+      end
+
+    +
+
+      coalesce(DFRub.nSum, 0)   as `Сумма досье на дату начала отчета`
+
+  , agr_fin.docum_tran_amt     as `Сумма сделки НПА на дату отчета если валюта RUR`
+
+  , ((agr_fin.docum_tran_amt * r_dt.rub_rate_amt) / r_dt.qty_rub_cnt)    as `Сумма сделки НПА на дату отчета если валюта не RUR`
+
+  , r_dt.rub_rate_amt                         as `Курс nr`
+
+  , r_dt.qty_rub_cnt                          as `Курс nv`
+
+  , coalesce(DFRub.nSum, 0)    as `Невозмещенное отвлечение в рублях`
+
+  , coalesce(B.nSumDeferSB, 0) as `(9) Плата за отсрочку Банка, списанная за отчетный период`
+
+  , crncy_b.iso_code                          as `(10) Валюта платы`
+
+  , coalesce(A.nSumPercent, 0) as `(11) Выплаченные проценты на остаток покрытия`
+
+  , crncy_a.iso_code                          as `(12) Валюта процентов`
+
+  , case when optn_m.agr_sk is null then false else true end  as `Признак миграции`
+
+ 
+
+from agr_sk_list_fin C
+
+left join A
+
+  on C.agr_sk = A.agr_sk
+
+left join B
+
+  on C.agr_sk = B.agr_sk
+
+left join D
+
+  on C.agr_sk = D.agr_sk
+
+left join F
+
+  on C.agr_sk = F.agr_sk
+
+left join DF
+
+  on C.agr_sk = DF.agr_sk
+
+left join DFRub
+
+  on C.agr_sk = DFRub.agr_sk
+
+left join E
+
+  on C.agr_sk = E.agr_sk
+
+left join ERub
+
+  on C.agr_sk = ERub.agr_sk
+
+left join EC
+
+  on C.agr_sk = EC.agr_sk
+
+left join ECRub
+
+  on C.agr_sk = ECRub.agr_sk
+
+left join Z
+
+  on C.agr_sk = Z.agr_sk
+
+left join ZRub
+
+  on C.agr_sk = ZRub.agr_sk
+
+left join ZC
+
+  on C.agr_sk = ZC.agr_sk
+
+left join ZCRub
+
+  on C.agr_sk = ZCRub.agr_sk
+
+left join G
+
+  on C.agr_sk = G.agr_sk
+
+left join GRub
+
+  on C.agr_sk = GRub.agr_sk
+
+left join BRPlan
+
+  on C.agr_sk = BRPlan.agr_sk
+
+left join BRFact
+
+  on C.agr_sk = BRFact.agr_sk
+
+left join operations_list optn
+
+  on C.agr_sk = optn.agr_sk
+
+left join operations_list optn_m
+
+  on C.agr_sk = optn_m.agr_sk and optn_m.group_code in ('Migration')
+
+left join usl_tradefin_ndl_uvdo_snp.letter_cred_source_coverage_type lcs
+
+  on C.letter_cred_source_coverage_type_sk = lcs.letter_cred_source_coverage_type_sk
+
+left join usl_rdm_idl_spark_snp.crncy
+
+  on C.docum_tran_crncy_sk = crncy.crncy_sk
+
+left join usl_tradefin_ndl_uvdo_snp.agr_cond
+
+  on C.agr_sk = agr_cond.agr_sk and agr_cond.end_dt = '9999-12-31'
+
+left join usl_tradefin_ndl_uvdo_snp.agr_fin
+
+  on C.agr_sk = agr_fin.agr_sk and current_date >= agr_fin.start_dt and current_date < agr_fin.end_dt
+
+left join usl_rdm_idl_spark_snp.crncy crncy_2
+
+  on agr_fin.docum_tran_crncy_sk = crncy_2.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate r
+
+  on crncy.crncy_sk = r.crncy_sk
+
+left join usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+  on r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+  and r_dt.point_dt = current_date
+
+left join usl_rdm_idl_spark_snp.crncy crncy_b
+
+  on B.crncy_sk = crncy_b.crncy_sk
+
+left join usl_rdm_idl_spark_snp.crncy crncy_a
+
+  on A.crncy_sk = crncy_a.crncy_sk
+
+
+
+я его оптимизировал
+
+
+WITH
+
+-- Период отчёта
+
+date_list AS (
+
+    SELECT '2025-01-01'::DATE AS date_start, '2025-12-31'::DATE AS date_end
+
+),
+
+ 
+
+-- Все субъекты (принципалы и бенефициары) из двух источников
+
+subj_list_app AS (
+
+    SELECT
+
+        subj_h.subj_dp_code,
+
+        subj_h.subj_sk,
+
+        subj_h.inn_num AS inn,
+
+        subj.sid AS epk_id,
+
+        subj_orgidfn.full_name AS client_name,
+
+        subj_org_kpp.kpp_code AS kpp
+
+    FROM usl_tradefin_ndl_uvdo_snp.subj
+
+    LEFT JOIN usl_tradefin_ndl_uvdo_snp.subj_h ON subj.subj_sk = subj_h.subj_sk
+
+    LEFT JOIN usl_tradefin_ndl_uvdo_snp.subj_org_kpp ON subj.subj_sk = subj_org_kpp.subj_sk
+
+    LEFT JOIN usl_tradefin_ndl_uvdo_snp.subj_orgidfn ON subj.subj_sk = subj_orgidfn.subj_sk
+
+ 
+
+    UNION ALL
+
+ 
+
+    SELECT
+
+        subj_h.subj_dp_code,
+
+        subj_h.subj_sk,
+
+        subj_h.inn_num,
+
+        subj.sid,
+
+        subj_orgidfn.full_name,
+
+        subj_org_kpp.kpp_code
+
+    FROM usl_subj_org_idl_snp.subj
+
+    LEFT JOIN usl_subj_org_idl_snp.subj_h ON subj.subj_sk = subj_h.subj_sk
+
+    LEFT JOIN usl_subj_org_idl_snp.subj_org_kpp ON subj.subj_sk = subj_org_kpp.subj_sk
+
+    LEFT JOIN usl_subj_org_idl_snp.subj_orgidfn ON subj.subj_sk = subj_orgidfn.subj_sk
+
+),
+
+ 
+
+-- Сделки, попадающие в отчёт
+
+agr_sk_list_fin AS (
+
+    SELECT DISTINCT
+
+        agr.agr_sk,
+
+        agr.agr_dp_code,
+
+        agr.type_code,
+
+        agr.sid,
+
+        agr.num,
+
+        agr_fin.docum_tran_amt,
+
+        agr_fin.docum_tran_crncy_sk,
+
+        agr.letter_cred_coverage_flag,
+
+        agr.letter_cred_source_coverage_type_sk,
+
+        agr.open_dt,
+
+        agr.close_dt,
+
+        -- данные аппликанта
+
+        app.inn AS app_inn,
+
+        app.epk_id AS app_epk_id,
+
+        app.client_name AS app_name,
+
+        app.kpp AS app_kpp,
+
+        -- данные бенефициара
+
+        ben.inn AS ben_inn,
+
+        ben.epk_id AS ben_epk_id,
+
+        ben.client_name AS ben_name,
+
+        ben.kpp AS ben_kpp
+
+    FROM usl_tradefin_ndl_uvdo_snp.agr
+
+    INNER JOIN usl_tradefin_ndl_uvdo_snp.agr_fin
+
+        ON agr.agr_sk = agr_fin.agr_sk AND agr_fin.end_dt = '9999-12-31'
+
+    INNER JOIN usl_tradefin_ndl_uvdo_snp.agr_proc
+
+        ON agr.agr_sk = agr_proc.agr_sk AND agr_proc.end_dt = '9999-12-31'
+
+    INNER JOIN usl_tradefin_ndl_uvdo_snp.letter_cred_type lct
+
+        ON agr.letter_cred_type_sk = lct.letter_cred_type_sk
+
+        AND lct.sid IN ('1','2','10')
+
+        AND agr.type_code IN ('org','org_draft')
+
+    LEFT JOIN subj_list_app app
+
+        ON agr_proc.letter_cred_org_buyer_subj_sk = app.subj_sk
+
+    LEFT JOIN subj_list_app ben
+
+        ON agr_proc.docum_tran_seller_subj_sk = ben.subj_sk
+
+        AND ben.subj_dp_code IN ('tradefin_ndl_uvdo','subj_org_ndl_p_ucpkb')
+
+    CROSS JOIN date_list
+
+    LEFT JOIN usl_tradefin_ndl_uvdo_snp.letter_cred_org_plan_payment plan
+
+        ON agr.agr_sk = plan.plan_payment_agr_sk
+
+        AND SPLIT(plan.sid, '\\|')[0] IN ('VOZMPA4410','VOZMPA')
+
+        AND COALESCE(plan.letter_cred_org_plan_payment_amt,0) > 0
+
+        AND plan.letter_cred_org_plan_payment_dt >= date_list.date_start
+
+    WHERE
+
+        agr.sign_dt < date_list.date_end
+
+        AND (
+
+            agr.close_dt IS NULL
+
+            OR plan.agr_sk IS NOT NULL
+
+            OR (agr.close_dt > date_list.date_start AND agr.close_dt < date_list.date_end)
+
+        )
+
+        AND (
+
+           agr_proc.letter_cred_org_buyer_subj_sk IN (SELECT subj_sk FROM subj_list_app)
+
+            OR agr_proc.docum_tran_seller_subj_sk IN (SELECT subj_sk FROM subj_list_app)
+
+        )
+
+),
+
+ 
+
+-- Операции: единая агрегация по сделке и валюте
+
+ops_agg AS (
+
+    SELECT
+
+        optn.agr_sk,
+
+        optn.crncy_sk,
+
+        -- группы для расчёта A (проценты)
+
+        SUM(CASE WHEN toptn.group_code = 'PayProc' AND optn.type_code = 'Operation'
+
+                  AND optn.optn_dttm >= date_list.date_start
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_PayProc,
+
+        -- группы для расчёта B (плата за отсрочку)
+
+        SUM(CASE WHEN toptn.group_code IN ('DefPayFee','DefPayFeeGS','PayCredit','PayCredit5')
+
+                  AND optn.type_code = 'Commission'
+
+                  AND optn.optn_dttm >= date_list.date_start
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_DefPayFee,
+
+        -- группы для расчёта D (отвлечение)
+
+        SUM(CASE WHEN toptn.group_code = 'BankPay' AND optn.type_code = 'Operation'
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_BankPay,
+
+        -- группы для расчёта F (возврат отвлечения)
+
+        SUM(CASE WHEN toptn.group_code = 'BankReturn' AND optn.type_code = 'Operation'
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_BankReturn,
+
+        -- группы для расчёта E (платежи, исключая ReturnCover) с фильтром >= date_start
+
+        SUM(CASE WHEN toptn.group_code IN ('PrePay','Prepay','Pay','Expire')
+
+                  AND optn.type_code = 'Operation'
+
+                  AND optn.optn_dttm >= date_list.date_start
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_Pay_Expire,
+
+        -- группы для расчёта EC (платежи, включая ReturnCover) с фильтром >= date_start
+
+        SUM(CASE WHEN toptn.group_code IN ('PrePay','Prepay','Pay','ReturnCover')
+
+                  AND optn.type_code = 'Operation'
+
+                  AND optn.optn_dttm >= date_list.date_start
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_Pay_ReturnCover,
+
+        -- группы для расчёта G (покрытие)
+
+        SUM(CASE WHEN toptn.group_code = 'Cover' AND optn.type_code = 'Operation'
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_Cover,
+
+        -- группы для расчёта Z (платежи до начала периода, исключая ReturnCover)
+
+        SUM(CASE WHEN toptn.group_code IN ('PrePay','Prepay','Pay','Expire')
+
+                  AND optn.type_code = 'Operation'
+
+                  AND optn.optn_dttm < date_list.date_start
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_Z_Expire,
+
+        -- группы для расчёта ZC (платежи до начала периода, включая ReturnCover)
+
+        SUM(CASE WHEN toptn.group_code IN ('PrePay','Prepay','Pay','ReturnCover')
+
+                  AND optn.type_code = 'Operation'
+
+                  AND optn.optn_dttm < date_list.date_start
+
+                 THEN optn.sum_opt_amt ELSE 0 END) AS sum_Z_ReturnCover,
+
+        -- даты для BRPlan / BRFact
+
+        MAX(CASE WHEN toptn.group_code IN ('Request','ReturnSchedule','DeferPayReturn')
+
+                 THEN optn.optn_dttm END) AS max_date_plan,
+
+        MAX(CASE WHEN toptn.group_code = 'BankReturn'
+
+                 THEN optn.optn_dttm END) AS max_date_return,
+
+        -- признак миграции
+
+        MAX(CASE WHEN toptn.group_code = 'Migration' THEN 1 ELSE 0 END) AS migration_flag
+
+    FROM agr_sk_list_fin
+
+    INNER JOIN usl_tradefin_ndl_uvdo_snp.optn
+
+        ON agr_sk_list_fin.agr_sk = optn.agr_sk
+
+    LEFT JOIN usl_tradefin_ndl_uvdo_snp.toptn
+
+        ON optn.toptn_sk = toptn.toptn_sk
+
+    CROSS JOIN date_list
+
+    WHERE optn.optn_dttm <= date_list.date_end
+
+      AND SPLIT(optn.optn_sid, '\\|')[0] > 0
+
+    GROUP BY optn.agr_sk, optn.crncy_sk
+
+),
+
+ 
+
+-- Курсы валют на текущую дату (для пересчёта в рубли)
+
+rates AS (
+
+    SELECT
+
+        crncy.crncy_sk,
+
+        crncy.digital_code,
+
+        crncy.iso_code,
+
+        r_dt.rub_rate_amt,
+
+        r_dt.qty_rub_cnt
+
+    FROM usl_rdm_idl_spark_snp.crncy
+
+    LEFT JOIN usl_gmrates_idl_snp.cbr_exchange_rate r
+
+        ON crncy.crncy_sk = r.crncy_sk
+
+    LEFT JOIN usl_gmrates_idl_snp.cbr_exchange_rate_dt r_dt
+
+        ON r.cbr_exchange_rate_sk = r_dt.cbr_exchange_rate_sk
+
+        AND r_dt.point_dt = CURRENT_DATE
+
+),
+
+ 
+
+-- Основной запрос
+
+SELECT DISTINCT
+
+    C.sid                             AS `ID аккредитива в dflike`,
+
+    C.num                             AS `(1) Номер аккредитива`,
+
+ 
+
+    C.app_inn                         AS `ИНН Плательщика`,
+
+    C.ben_inn                         AS `ИНН Получателя`,
+
+    C.app_epk_id                       AS `EPK_ID Плательщика`,
+
+    C.ben_epk_id                       AS `EPK_ID Получателя`,
+
+    C.app_name                         AS `Наименование Плательщика`,
+
+    C.ben_name                         AS `Наименование Получателя`,
+
+    C.app_kpp                          AS `КПП Плательщика`,
+
+    C.ben_kpp                          AS `КПП Получателя`,
+
+ 
+
+    C.agr_dp_code,
+
+    C.type_code,
+
+    C.docum_tran_amt                   AS `(2) Сумма аккредитива (на дату открытия)`,
+
+    crncy_agr.iso_code                 AS `(3) Валюта аккредитива`,
+
+    C.open_dt                          AS `(4) Дата открытия`,
+
+    C.close_dt                         AS `(5) Дата закрытия`,
+
+    agr_cond.mat_dt                    AS `(6) Дата истечения`,
+
+    C.letter_cred_coverage_flag         AS `Флаг покрытого аккредитива`,
+
+    lcs.letter_cred_source_coverage_type_name AS `Тип источника покрытия`,
+
+ 
+
+    -- (7) Остаток в валюте аккредитива
+
+    C.docum_tran_amt
+
+        - CASE
+
+            WHEN C.letter_cred_coverage_flag = false
+
+                THEN COALESCE(ops_agg_PayExp.sum_Pay_Expire, 0)      -- E
+
+            ELSE COALESCE(ops_agg_PayRC.sum_Pay_ReturnCover, 0)     -- EC
+
+          END
+
+        + COALESCE(ops_agg_Bank.sum_BankPay - ops_agg_Bank.sum_BankReturn, 0) AS `(7) Остаток в валюте аккредитива`,
+
+ 
+
+    -- (8) Остаток в рублях (аналогично, с пересчётом)
+
+    CASE
+
+        WHEN C.letter_cred_coverage_flag = false
+
+            THEN C.docum_tran_amt * COALESCE(r_agr.rub_rate_amt / NULLIF(r_agr.qty_rub_cnt, 0), 1)
+
+        ELSE COALESCE(ops_agg_Cover.sum_Cover, 0)
+
+               * COALESCE(r_cover.rub_rate_amt / NULLIF(r_cover.qty_rub_cnt, 0), 1)
+
+    END
+
+    - CASE
+
+        WHEN C.letter_cred_coverage_flag = false
+
+            THEN COALESCE(ops_agg_PayExp.sum_Pay_Expire, 0)
+
+                   * COALESCE(r_pay.rub_rate_amt / NULLIF(r_pay.qty_rub_cnt, 0), 1)
+
+        ELSE COALESCE(ops_agg_PayRC.sum_Pay_ReturnCover, 0)
+
+               * COALESCE(r_payrc.rub_rate_amt / NULLIF(r_payrc.qty_rub_cnt, 0), 1)
+
+      END
+
+    + COALESCE(
+
+        (ops_agg_Bank.sum_BankPay - ops_agg_Bank.sum_BankReturn)
+
+        * COALESCE(r_bank.rub_rate_amt / NULLIF(r_bank.qty_rub_cnt, 0), 1),
+
+        0
+
+      ) AS `(8) Остаток (руб.)`,
+
+ 
+
+    -- Сумма досье на начало периода (Z и ZC)
+
+    CASE
+
+        WHEN C.letter_cred_coverage_flag = false
+
+            THEN C.docum_tran_amt * COALESCE(r_agr.rub_rate_amt / NULLIF(r_agr.qty_rub_cnt, 0), 1)
+
+        ELSE COALESCE(ops_agg_Cover.sum_Cover, 0)
+
+               * COALESCE(r_cover.rub_rate_amt / NULLIF(r_cover.qty_rub_cnt, 0), 1)
+
+    END
+
+    - CASE
+
+        WHEN C.letter_cred_coverage_flag = false
+
+            THEN COALESCE(ops_agg_ZExp.sum_Z_Expire, 0)
+
+                   * COALESCE(r_zexp.rub_rate_amt / NULLIF(r_zexp.qty_rub_cnt, 0), 1)
+
+        ELSE COALESCE(ops_agg_ZRC.sum_Z_ReturnCover, 0)
+
+               * COALESCE(r_zrc.rub_rate_amt / NULLIF(r_zrc.qty_rub_cnt, 0), 1)
+
+      END
+
+    + COALESCE(
+
+        (ops_agg_Bank.sum_BankPay - ops_agg_Bank.sum_BankReturn)
+
+        * COALESCE(r_bank.rub_rate_amt / NULLIF(r_bank.qty_rub_cnt, 0), 1),
+
+        0
+
+      ) AS `Сумма досье на дату начала отчета`,
+
+ 
+
+    -- (9) Плата за отсрочку
+
+    COALESCE(ops_agg_Fee.sum_DefPayFee, 0) AS `(9) Плата за отсрочку Банка, списанная за отчетный период`,
+
+    crncy_fee.iso_code                  AS `(10) Валюта платы`,
+
+ 
+
+    -- (11) Проценты
+
+    COALESCE(ops_agg_Proc.sum_PayProc, 0) AS `(11) Выплаченные проценты на остаток покрытия`,
+
+    crncy_proc.iso_code                  AS `(12) Валюта процентов`,
+
+ 
+
+    CASE WHEN ops_agg_Mig.migration_flag = 1 THEN true ELSE false END AS `Признак миграции`,
+
+ 
+
+    -- дополнительные технические поля
+
+    agr_fin.docum_tran_amt               AS `Сумма сделки НПА на дату отчета`,
+
+    (C.docum_tran_amt * COALESCE(r_agr.rub_rate_amt / NULLIF(r_agr.qty_rub_cnt, 0), 1)) AS `Сумма сделки НПА на дату отчета (руб.)`
+
+ 
+
+FROM agr_sk_list_fin C
+
+ 
+
+-- Присоединяем справочники
+
+LEFT JOIN usl_tradefin_ndl_uvdo_snp.agr_cond
+
+    ON C.agr_sk = agr_cond.agr_sk AND agr_cond.end_dt = '9999-12-31'
+
+LEFT JOIN usl_tradefin_ndl_uvdo_snp.agr_fin
+
+    ON C.agr_sk = agr_fin.agr_sk AND CURRENT_DATE >= agr_fin.start_dt AND CURRENT_DATE < agr_fin.end_dt
+
+LEFT JOIN usl_tradefin_ndl_uvdo_snp.letter_cred_source_coverage_type lcs
+
+    ON C.letter_cred_source_coverage_type_sk = lcs.letter_cred_source_coverage_type_sk
+
+ 
+
+-- Курсы для валюты сделки
+
+LEFT JOIN rates r_agr
+
+    ON C.docum_tran_crncy_sk = r_agr.crncy_sk
+
+LEFT JOIN usl_rdm_idl_spark_snp.crncy crncy_agr
+
+    ON C.docum_tran_crncy_sk = crncy_agr.crncy_sk
+
+ 
+
+-- Агрегированные операции (каждая группа со своей валютой)
+
+LEFT JOIN ops_agg ops_agg_Proc
+
+    ON C.agr_sk = ops_agg_Proc.agr_sk
+
+LEFT JOIN rates r_proc
+
+    ON ops_agg_Proc.crncy_sk = r_proc.crncy_sk
+
+LEFT JOIN usl_rdm_idl_spark_snp.crncy crncy_proc
+
+    ON ops_agg_Proc.crncy_sk = crncy_proc.crncy_sk
+
+ 
+
+LEFT JOIN ops_agg ops_agg_Fee
+
+    ON C.agr_sk = ops_agg_Fee.agr_sk
+
+LEFT JOIN rates r_fee
+
+    ON ops_agg_Fee.crncy_sk = r_fee.crncy_sk
+
+LEFT JOIN usl_rdm_idl_spark_snp.crncy crncy_fee
+
+    ON ops_agg_Fee.crncy_sk = crncy_fee.crncy_sk
+
+ 
+
+LEFT JOIN ops_agg ops_agg_Bank
+
+    ON C.agr_sk = ops_agg_Bank.agr_sk
+
+LEFT JOIN rates r_bank
+
+    ON ops_agg_Bank.crncy_sk = r_bank.crncy_sk
+
+ 
+
+LEFT JOIN ops_agg ops_agg_PayExp
+
+    ON C.agr_sk = ops_agg_PayExp.agr_sk
+
+LEFT JOIN rates r_pay
+
+    ON ops_agg_PayExp.crncy_sk = r_pay.crncy_sk
+
+ 
+
+LEFT JOIN ops_agg ops_agg_PayRC
+
+    ON C.agr_sk = ops_agg_PayRC.agr_sk
+
+LEFT JOIN rates r_payrc
+
+    ON ops_agg_PayRC.crncy_sk = r_payrc.crncy_sk
+
+ 
+
+LEFT JOIN ops_agg ops_agg_Cover
+
+    ON C.agr_sk = ops_agg_Cover.agr_sk
+
+LEFT JOIN rates r_cover
+
+    ON ops_agg_Cover.crncy_sk = r_cover.crncy_sk
+
+ 
+
+LEFT JOIN ops_agg ops_agg_ZExp
+
+    ON C.agr_sk = ops_agg_ZExp.agr_sk
+
+LEFT JOIN rates r_zexp
+
+    ON ops_agg_ZExp.crncy_sk = r_zexp.crncy_sk
+
+ 
+
+LEFT JOIN ops_agg ops_agg_ZRC
+
+    ON C.agr_sk = ops_agg_ZRC.agr_sk
+
+LEFT JOIN rates r_zrc
+
+    ON ops_agg_ZRC.crncy_sk = r_zrc.crncy_sk
+
+ 
+
+LEFT JOIN ops_agg ops_agg_Mig
+
+    ON C.agr_sk = ops_agg_Mig.agr_sk
+
+ 
+
+-- Даты для BRPlan/BRFact (можно добавить отдельные поля из ops_agg)
+
+-- ... (при необходимости)
+
+;
+
+проверь эквивалентны ли запросы, оцени мою оптимизацию. предложи улучшения или свой вариант
