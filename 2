@@ -1,0 +1,445 @@
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
+import org.apache.spark.storage.StorageLevel
+
+object LetterOfCreditReportOptimized {
+  def main(args: Array[String]): Unit = {
+    val spark = SparkSession.builder()
+      .appName("Letter of Credit Report (Optimized)")
+      .enableHiveSupport()
+      .getOrCreate()
+
+    import spark.implicits._
+
+    // Параметры отчёта
+    val dateStart = "2025-01-01"
+    val dateEnd = "2025-12-31"
+
+    // 1. date_list – маленький DF, можно broadcast
+    val dateListDF = Seq((dateStart, dateEnd)).toDF("date_start", "date_end")
+    dateListDF.createOrReplaceTempView("date_list")
+
+    val startDate = to_date(lit(dateStart))
+    val endDate = to_date(lit(dateEnd))
+
+    // 2. Загрузка таблиц (предполагается Hive)
+    val subjTrading = spark.table("usl_tradefin_ndl_uvdo_snp.subj")
+    val subjHTrading = spark.table("usl_tradefin_ndl_uvdo_snp.subj_h")
+    val subjOrgKppTrading = spark.table("usl_tradefin_ndl_uvdo_snp.subj_org_kpp")
+    val subjOrgIdfnTrading = spark.table("usl_tradefin_ndl_uvdo_snp.subj_orgidfn")
+
+    val subjIdl = spark.table("usl_subj_org_idl_snp.subj")
+    val subjHIdl = spark.table("usl_subj_org_idl_snp.subj_h")
+    val subjOrgKppIdl = spark.table("usl_subj_org_idl_snp.subj_org_kpp")
+    val subjOrgIdfnIdl = spark.table("usl_subj_org_idl_snp.subj_orgidfn")
+
+    // 3. subj_list_app – объединение двух источников (UNION)
+    val subjListTrading = subjTrading
+      .join(broadcast(subjHTrading), Seq("subj_sk"), "left")
+      .join(broadcast(subjOrgKppTrading), Seq("subj_sk"), "left")
+      .join(broadcast(subjOrgIdfnTrading), Seq("subj_sk"), "left")
+      .select(
+        subjHTrading("subj_dp_code"),
+        subjHTrading("subj_sk"),
+        subjHTrading("inn_num").alias("inn"),
+        subjTrading("sid").alias("epk_id"),
+        subjOrgIdfnTrading("full_name").alias("client_name"),
+        subjOrgKppTrading("kpp_code").alias("kpp")
+      )
+
+    val subjListIdl = subjIdl
+      .join(broadcast(subjHIdl), Seq("subj_sk"), "left")
+      .join(broadcast(subjOrgKppIdl), Seq("subj_sk"), "left")
+      .join(broadcast(subjOrgIdfnIdl), Seq("subj_sk"), "left")
+      .select(
+        subjHIdl("subj_dp_code"),
+        subjHIdl("subj_sk"),
+        subjHIdl("inn_num").alias("inn"),
+        subjIdl("sid").alias("epk_id"),
+        subjOrgIdfnIdl("full_name").alias("client_name"),
+        subjOrgKppIdl("kpp_code").alias("kpp")
+      )
+
+    val subjListAppDF = subjListTrading.union(subjListIdl).distinct()
+    subjListAppDF.createOrReplaceTempView("subj_list_app")
+
+    // 4. plan_payment – маленькая, будем broadcast при джойне
+    val planPaymentDF = spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_org_plan_payment")
+      .withColumn("sid_first", split(col("sid"), "\\|").getItem(0))
+      .filter(
+        col("sid_first").isin("VOZMPA4410", "VOZMPA") &&
+        coalesce(col("letter_cred_org_plan_payment_amt"), lit(0)) > 0 &&
+        col("letter_cred_org_plan_payment_dt") >= startDate
+      )
+      .select(col("plan_payment_agr_sk").alias("agr_sk"))
+      .distinct()
+
+    // 5. agr_base – основной набор сделок
+    val agrDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr")
+    val agrFinDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr_fin")
+    val agrProcDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr_proc")
+    val letterCredTypeDF = spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_type")
+
+    val agrFinOpen = agrFinDF.filter(col("end_dt") === "9999-12-31")
+      .select(col("agr_sk"), col("docum_tran_amt").alias("open_amt"))
+
+    val agrProcFiltered = agrProcDF.filter(col("end_dt") === "9999-12-31")
+
+    val baseJoined = agrDF
+      .join(agrFinOpen, Seq("agr_sk"), "inner")
+      .join(agrProcFiltered, Seq("agr_sk"), "inner")
+      .join(broadcast(letterCredTypeDF), Seq("letter_cred_type_sk"), "inner")
+      .filter(
+        col("sid").isin("1", "2", "10") &&
+        col("type_code").isin("org", "org_draft")
+      )
+      .crossJoin(broadcast(dateListDF))
+      .withColumn("sign_dt", to_date(col("sign_dt")))
+      .withColumn("close_dt", to_date(col("close_dt")))
+
+    // Присоединяем аппликанта и бенефициара – субъектов не очень много, можно broadcast
+    val appJoin = baseJoined
+      .join(broadcast(subjListAppDF.as("app")), col("letter_cred_org_buyer_subj_sk") === col("app.subj_sk"), "left")
+    val withBen = appJoin
+      .join(broadcast(subjListAppDF.as("ben")),
+            col("docum_tran_seller_subj_sk") === col("ben.subj_sk") &&
+            col("ben.subj_dp_code").isin("tradefin_ndl_uvdo", "subj_org_ndl_p_ucpkb"),
+            "left")
+
+    val withPlan = withBen
+      .join(broadcast(planPaymentDF.as("plan")), col("agr_sk") === col("plan.agr_sk"), "left")
+      .withColumn("plan_exists", col("plan.agr_sk"))
+
+    // Подзапрос IN – broadcast коллекции (альтернативно можно использовать left semi, но здесь подходит)
+    val subjSkList = subjListAppDF.select("subj_sk").as[Long].collect().toSet
+    val subjSkBroadcast = spark.sparkContext.broadcast(subjSkList)
+    val isInSubjList = udf((sk: Long) => subjSkBroadcast.value.contains(sk))
+
+    val agrBaseDF = withPlan
+      .filter(
+        isInSubjList(col("letter_cred_org_buyer_subj_sk")) ||
+        isInSubjList(col("docum_tran_seller_subj_sk"))
+      )
+      .select(
+        col("agr_sk"),
+        col("sid"),
+        col("num"),
+        col("agr_dp_code"),
+        col("type_code"),
+        col("docum_tran_crncy_sk"),
+        col("letter_cred_coverage_flag"),
+        col("letter_cred_source_coverage_type_sk"),
+        col("open_dt"),
+        col("close_dt"),
+        col("open_amt"),
+        col("app.inn").alias("app_inn"),
+        col("app.epk_id").alias("app_epk_id"),
+        col("app.client_name").alias("app_name"),
+        col("app.kpp").alias("app_kpp"),
+        col("ben.inn").alias("ben_inn"),
+        col("ben.epk_id").alias("ben_epk_id"),
+        col("ben.client_name").alias("ben_name"),
+        col("ben.kpp").alias("ben_kpp"),
+        col("plan_exists")
+      )
+      .distinct()
+
+    agrBaseDF.createOrReplaceTempView("agr_base")
+
+    // 6. rates – курсы валют (маленькая, будем broadcast)
+    val crncyDF = spark.table("usl_rdm_idl_spark_snp.crncy")
+    val exchangeRateDF = spark.table("usl_gmrates_idl_snp.cbr_exchange_rate")
+    val exchangeRateDtDF = spark.table("usl_gmrates_idl_snp.cbr_exchange_rate_dt")
+      .filter(col("point_dt") === current_date())
+
+    val ratesDF = crncyDF
+      .join(broadcast(exchangeRateDF), Seq("crncy_sk"), "left")
+      .join(broadcast(exchangeRateDtDF), Seq("cbr_exchange_rate_sk"), "left")
+      .select(
+        col("crncy_sk"),
+        col("digital_code"),
+        col("iso_code"),
+        col("rub_rate_amt"),
+        col("qty_rub_cnt")
+      )
+
+    // 7. ops_with_conv – операции с пересчётом
+    val optnDF = spark.table("usl_tradefin_ndl_uvdo_snp.optn")
+    val toptnDF = spark.table("usl_tradefin_ndl_uvdo_snp.toptn")
+
+    val opsWithRates = agrBaseDF
+      .join(optnDF, Seq("agr_sk"), "inner")
+      .join(broadcast(toptnDF), Seq("toptn_sk"), "left")
+      .crossJoin(broadcast(dateListDF))
+      .withColumn("optn_dttm", to_timestamp(col("optn_dttm")))
+      .filter(col("optn_dttm") <= col("date_end") &&
+              split(col("optn_sid"), "\\|").getItem(0).cast("int") > 0)
+      .join(broadcast(ratesDF).as("op_rate"), col("optn.crncy_sk") === col("op_rate.crncy_sk"), "left")
+      .join(broadcast(ratesDF).as("agr_rate"), col("docum_tran_crncy_sk") === col("agr_rate.crncy_sk"), "left")
+
+    val opsWithConvDF = opsWithRates
+      .withColumn("sum_in_agr_curr",
+        when(col("optn.crncy_sk") === col("docum_tran_crncy_sk"), col("sum_opt_amt"))
+        .when(col("op_rate.digital_code") =!= "643" && col("agr_rate.digital_code") === "643",
+              col("sum_opt_amt") * col("op_rate.rub_rate_amt") / col("op_rate.qty_rub_cnt"))
+        .when(col("op_rate.digital_code") === "643" && col("agr_rate.digital_code") =!= "643",
+              col("sum_opt_amt") * col("agr_rate.qty_rub_cnt") / col("agr_rate.rub_rate_amt"))
+        .when(col("op_rate.digital_code") =!= "643" && col("agr_rate.digital_code") =!= "643",
+              col("sum_opt_amt") * col("op_rate.rub_rate_amt") * col("agr_rate.qty_rub_cnt") /
+              (col("op_rate.qty_rub_cnt") * col("agr_rate.rub_rate_amt")))
+        .otherwise(lit(null))
+      )
+      .withColumn("sum_in_rub",
+        when(col("op_rate.digital_code") === "643", col("sum_opt_amt"))
+        .otherwise(col("sum_opt_amt") * col("op_rate.rub_rate_amt") / col("op_rate.qty_rub_cnt"))
+      )
+      .select(
+        col("agr_sk"),
+        col("letter_cred_coverage_flag"),
+        col("optn_dttm"),
+        col("type_code"),
+        col("sum_opt_amt"),
+        col("group_code"),
+        col("optn.crncy_sk").alias("op_crncy_sk"),
+        col("op_rate.digital_code").alias("op_dig"),
+        col("op_rate.iso_code").alias("op_iso"),
+        col("op_rate.rub_rate_amt").alias("op_rate_amt"),
+        col("op_rate.qty_rub_cnt").alias("op_qty"),
+        col("agr_rate.digital_code").alias("agr_dig"),
+        col("agr_rate.rub_rate_amt").alias("agr_rate_amt"),
+        col("agr_rate.qty_rub_cnt").alias("agr_qty"),
+        col("sum_in_agr_curr"),
+        col("sum_in_rub")
+      )
+      .cache() // КЕШИРУЕМ для многократного использования
+
+    // 8. Агрегации по сделке и валюте (как отдельные DataFrame)
+    val dateStartLit = to_date(lit(dateStart))
+
+    // A – проценты (рубли)
+    val A = opsWithConvDF
+      .filter(col("group_code") === "PayProc" &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") >= dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(
+        sum("sum_in_rub").alias("nSumPercent"),
+        max("op_iso").alias("currency_iso")
+      )
+
+    // B – плата за отсрочку (рубли)
+    val B = opsWithConvDF
+      .filter(col("group_code").isin("DefPayFee", "DefPayFeeGS", "PayCredit", "PayCredit5") &&
+              col("type_code") === "Commission" &&
+              col("optn_dttm") >= dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(
+        sum("sum_in_rub").alias("nSumDeferSB"),
+        max("op_iso").alias("currency_iso")
+      )
+
+    // D – отвлечение (в валюте сделки)
+    val D = opsWithConvDF
+      .filter(col("group_code") === "BankPay" && col("type_code") === "Operation")
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_agr_curr").alias("nSumBankPay"))
+
+    // F – возврат отвлечения (в валюте сделки)
+    val F = opsWithConvDF
+      .filter(col("group_code") === "BankReturn" && col("type_code") === "Operation")
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_agr_curr").alias("nSumBankReturn"))
+
+    // E – платежи для непокрытых (после начала, в валюте сделки)
+    val E = opsWithConvDF
+      .filter(col("group_code").isin("PrePay", "Prepay", "Pay", "Expire") &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") >= dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_agr_curr").alias("nSumPay"))
+
+    // EC – платежи для покрытых (после начала, с ReturnCover, в валюте сделки)
+    val EC = opsWithConvDF
+      .filter(col("group_code").isin("PrePay", "Prepay", "Pay", "ReturnCover") &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") >= dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_agr_curr").alias("nSumPay"))
+
+    // G – покрытие (в валюте сделки)
+    val G = opsWithConvDF
+      .filter(col("group_code") === "Cover" && col("type_code") === "Operation")
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_agr_curr").alias("nSumCover"))
+
+    // Z – платежи до начала для непокрытых (в валюте сделки)
+    val Z = opsWithConvDF
+      .filter(col("group_code").isin("PrePay", "Prepay", "Pay", "Expire") &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") < dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_agr_curr").alias("nSumPay"))
+
+    // ZC – платежи до начала для покрытых (с ReturnCover)
+    val ZC = opsWithConvDF
+      .filter(col("group_code").isin("PrePay", "Prepay", "Pay", "ReturnCover") &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") < dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_agr_curr").alias("nSumPay"))
+
+    // Рублёвые версии
+    val ERub = opsWithConvDF
+      .filter(col("group_code").isin("PrePay", "Prepay", "Pay", "Expire") &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") >= dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_rub").alias("nSumPay"))
+
+    val ECRub = opsWithConvDF
+      .filter(col("group_code").isin("PrePay", "Prepay", "Pay", "ReturnCover") &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") >= dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_rub").alias("nSumPay"))
+
+    val ZRub = opsWithConvDF
+      .filter(col("group_code").isin("PrePay", "Prepay", "Pay", "Expire") &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") < dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_rub").alias("nSumPay"))
+
+    val ZCRub = opsWithConvDF
+      .filter(col("group_code").isin("PrePay", "Prepay", "Pay", "ReturnCover") &&
+              col("type_code") === "Operation" &&
+              col("optn_dttm") < dateStartLit)
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_rub").alias("nSumPay"))
+
+    val GRub = opsWithConvDF
+      .filter(col("group_code") === "Cover" && col("type_code") === "Operation")
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_rub").alias("nSumCover"))
+
+    val FRub = opsWithConvDF
+      .filter(col("group_code") === "BankReturn" && col("type_code") === "Operation")
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_rub").alias("nSumBankReturn"))
+
+    val DRub = opsWithConvDF
+      .filter(col("group_code") === "BankPay" && col("type_code") === "Operation")
+      .groupBy(col("agr_sk"), col("op_crncy_sk").alias("crncy_sk"))
+      .agg(sum("sum_in_rub").alias("nSumBankPay"))
+
+    // migration
+    val migrationDF = opsWithConvDF
+      .filter(col("group_code") === "Migration")
+      .groupBy(col("agr_sk"))
+      .agg(lit(1).alias("migration_flag"))
+      .select(col("agr_sk"), col("migration_flag"))
+
+    // 9. Текущая сумма сделки (agr_fin_current)
+    val agrFinCurrentDF = spark.table("usl_tradefin_ndl_uvdo_snp.agr_fin")
+      .filter(col("start_dt") <= current_date() && col("end_dt") > current_date())
+      .select(col("agr_sk"), col("docum_tran_amt"), col("docum_tran_crncy_sk"))
+
+    // 10. Финальный SELECT
+    var result = agrBaseDF
+      .join(agrFinCurrentDF.as("fin_cur"), Seq("agr_sk"), "left")
+      .join(broadcast(spark.table("usl_tradefin_ndl_uvdo_snp.agr_cond").as("cond")
+            .filter(col("cond.end_dt") === "9999-12-31")),
+            col("agr_sk") === col("cond.agr_sk"), "left")
+      .join(broadcast(spark.table("usl_tradefin_ndl_uvdo_snp.letter_cred_source_coverage_type").as("lcs")),
+            col("letter_cred_source_coverage_type_sk") === col("lcs.letter_cred_source_coverage_type_sk"), "left")
+      .join(broadcast(spark.table("usl_rdm_idl_spark_snp.crncy").as("agr_curr")),
+            col("docum_tran_crncy_sk") === col("agr_curr.crncy_sk"), "left")
+      .join(broadcast(ratesDF).as("agr_rate"), col("docum_tran_crncy_sk") === col("agr_rate.crncy_sk"), "left")
+
+    // Присоединяем агрегации (LEFT JOIN по agr_sk)
+    Seq(
+      ("A", A), ("B", B), ("D", D), ("F", F), ("E", E), ("EC", EC), ("G", G),
+      ("Z", Z), ("ZC", ZC), ("ERub", ERub), ("ECRub", ECRub), ("ZRub", ZRub),
+      ("ZCRub", ZCRub), ("GRub", GRub), ("FRub", FRub), ("DRub", DRub)
+    ).foreach { case (name, df) =>
+      result = result.join(df.as(name), Seq("agr_sk"), "left")
+    }
+
+    result = result.join(migrationDF.as("mig"), Seq("agr_sk"), "left")
+
+    val finalDF = result.select(
+      col("sid").alias("ID аккредитива в dflike"),
+      col("num").alias("(1) Номер аккредитива"),
+      col("app_inn").alias("ИНН Плательщика"),
+      col("ben_inn").alias("ИНН Получателя"),
+      col("app_epk_id").alias("EPK_ID Плательщика"),
+      col("ben_epk_id").alias("EPK_ID Получателя"),
+      col("app_name").alias("Наименование Плательщика"),
+      col("ben_name").alias("Наименование Получателя"),
+      col("app_kpp").alias("КПП Плательщика"),
+      col("ben_kpp").alias("КПП Получателя"),
+      col("agr_dp_code"),
+      col("type_code"),
+      col("open_amt").alias("(2) Сумма аккредитива (на дату открытия)"),
+      col("agr_curr.iso_code").alias("(3) Валюта аккредитива"),
+      col("open_dt").alias("(4) Дата открытия"),
+      col("close_dt").alias("(5) Дата закрытия"),
+      col("cond.mat_dt").alias("(6) Дата истечения (дата погашения обязательств по аккредитиву)"),
+      col("letter_cred_coverage_flag").alias("Флаг покрытого аккрдитива"),
+      col("lcs.letter_cred_source_coverage_type_name").alias("Тип источника покрытия"),
+
+      // (7) Остаток в валюте аккредитива
+      (col("open_amt")
+        - when(col("letter_cred_coverage_flag") === false, coalesce(col("E.nSumPay"), lit(0)))
+         .otherwise(coalesce(col("EC.nSumPay"), lit(0)))
+        + (coalesce(col("D.nSumBankPay"), lit(0)) - coalesce(col("F.nSumBankReturn"), lit(0)))
+      ).alias("(7) Остаток в валюте аккредитива"),
+
+      col("fin_cur.docum_tran_amt").alias("Сумма сделки НПА на дату отчета"),
+      coalesce(col("G.nSumCover"), lit(0)).alias("Сумма сделки ПА на дату отчета"),
+      (coalesce(col("D.nSumBankPay"), lit(0)) - coalesce(col("F.nSumBankReturn"), lit(0)))
+        .alias("Невозмещенное отвлечение в валюте сделки"),
+
+      // (8) Остаток в рублях
+      (
+        when(col("letter_cred_coverage_flag") === false,
+          coalesce(col("fin_cur.docum_tran_amt") * col("agr_rate.rub_rate_amt") / col("agr_rate.qty_rub_cnt"),
+                   col("fin_cur.docum_tran_amt")))
+        .otherwise(coalesce(col("GRub.nSumCover"), lit(0)))
+        - when(col("letter_cred_coverage_flag") === false, coalesce(col("ERub.nSumPay"), lit(0)))
+          .otherwise(coalesce(col("ECRub.nSumPay"), lit(0)))
+        + (coalesce(col("DRub.nSumBankPay"), lit(0)) - coalesce(col("FRub.nSumBankReturn"), lit(0)))
+      ).alias("(8) Остаток (на дату окончания периода) (руб.)"),
+
+      // Сумма досье на дату начала отчета
+      (
+        when(col("letter_cred_coverage_flag") === false,
+          coalesce(col("fin_cur.docum_tran_amt") * col("agr_rate.rub_rate_amt") / col("agr_rate.qty_rub_cnt"),
+                   col("fin_cur.docum_tran_amt")))
+        .otherwise(coalesce(col("GRub.nSumCover"), lit(0)))
+        - when(col("letter_cred_coverage_flag") === false, coalesce(col("ZRub.nSumPay"), lit(0)))
+          .otherwise(coalesce(col("ZCRub.nSumPay"), lit(0)))
+        + (coalesce(col("DRub.nSumBankPay"), lit(0)) - coalesce(col("FRub.nSumBankReturn"), lit(0)))
+      ).alias("Сумма досье на дату начала отчета"),
+
+      col("agr_rate.rub_rate_amt").alias("Курс nr"),
+      col("agr_rate.qty_rub_cnt").alias("Курс nv"),
+      (coalesce(col("DRub.nSumBankPay"), lit(0)) - coalesce(col("FRub.nSumBankReturn"), lit(0)))
+        .alias("Невозмещенное отвлечение в рублях"),
+
+      coalesce(col("B.nSumDeferSB"), lit(0)).alias("(9) Плата за отсрочку Банка, списанная за отчетный период"),
+      col("B.currency_iso").alias("(10) Валюта платы"),
+      coalesce(col("A.nSumPercent"), lit(0)).alias("(11) Выплаченные проценты на остаток покрытия"),
+      col("A.currency_iso").alias("(12) Валюта процентов"),
+
+      when(col("mig.migration_flag") === 1, lit(true)).otherwise(lit(false)).alias("Признак миграции")
+    )
+
+    // Вывод или сохранение результата
+    finalDF.show(100, false)
+    // finalDF.write.mode("overwrite").parquet("/path/to/output")
+
+    opsWithConvDF.unpersist()
+  }
+}
